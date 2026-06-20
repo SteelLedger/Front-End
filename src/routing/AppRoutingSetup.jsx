@@ -5,12 +5,11 @@ import {
 } from "react-router-dom";
 import Login from "../auth/pages/Login";
 import ProtectedRoute from "./ProtectedRoute";
+import Layout from "../layouts/Layout";
 import Dashboard from "../pages/Dashboard";
-// import Inventory from "../pages/Inventory";
-// import Orders from "../pages/Orders";
-// import Profile from "../pages/Profile";
-// import Reports from "../pages/Reports";
-// import NotFound from "../pages/NotFound";
+import Parties from "../pages/Parties";
+import ComingSoon from "../pages/ComingSoon";
+import NotFound from "../pages/NotFound";
 
 const router = createBrowserRouter([
   // Public route
@@ -25,38 +24,52 @@ const router = createBrowserRouter([
     element: <Navigate to="/dashboard" replace />,
   },
 
-  // Protected routes
+  // Protected routes — wrapped in ProtectedRoute (auth check),
+  // then Layout (sidebar + topbar), then the individual page.
   {
     element: <ProtectedRoute />,
     children: [
       {
-        path: "/dashboard",
-        element: <Dashboard />,
+        element: <Layout />,
+        children: [
+          {
+            path: "/dashboard",
+            element: <Dashboard />,
+          },
+          {
+            path: "/parties",
+            element: <Parties />,
+          },
+          // Modules not built yet — placeholders so QA doesn't hit blank screens.
+          {
+            path: "/items",
+            element: <ComingSoon title="Items" />,
+          },
+          {
+            path: "/sales",
+            element: <ComingSoon title="Sales" />,
+          },
+          {
+            path: "/purchase",
+            element: <ComingSoon title="Purchase" />,
+          },
+          {
+            path: "/reports",
+            element: <ComingSoon title="Reports" />,
+          },
+          {
+            path: "/settings",
+            element: <ComingSoon title="Settings" />,
+          },
+          // 404 — any unknown path inside the app shell.
+          {
+            path: "*",
+            element: <NotFound />,
+          },
+        ],
       },
-      //   {
-      //     path: "/inventory",
-      //     element: <Inventory />,
-      //   },
-      //   {
-      //     path: "/orders",
-      //     element: <Orders />,
-      //   },
-      //   {
-      //     path: "/profile",
-      //     element: <Profile />,
-      //   },
-      //   {
-      //     path: "/reports",
-      //     element: <Reports />,
-      //   },
     ],
   },
-
-  // 404 fallback
-  //   {
-  //     path: "*",
-  //     element: <NotFound />,
-  //   },
 ]);
 
 const AppRoutingSetup = () => {
