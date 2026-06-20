@@ -35,7 +35,6 @@ export default function AddPartyDrawer({
   mode,
   formState,
   setFormState,
-  formError,
   saving,
   loading,
   onClose,
@@ -45,16 +44,30 @@ export default function AddPartyDrawer({
   const [tab, setTab] = useState("tax"); // "tax" | "credit"
   const [countries, setCountries] = useState([]);
   const [statesByCountry, setStatesByCountry] = useState({});
+  const [nameError, setNameError] = useState("");
 
   // Reset to the first tab each time the drawer opens, and focus the name field.
   useEffect(() => {
     if (!open) return;
     const id = requestAnimationFrame(() => {
       setTab("tax");
+      setNameError("");
       nameRef.current?.focus();
     });
     return () => cancelAnimationFrame(id);
   }, [open]);
+
+  // Party name is the only required field; validate before handing off to save.
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!formState.name.trim()) {
+      setNameError("Party name is required.");
+      nameRef.current?.focus();
+      return;
+    }
+    setNameError("");
+    onSubmit(e);
+  }
 
   // Close on Escape + lock background scroll while open.
   useEffect(() => {
@@ -290,18 +303,32 @@ export default function AddPartyDrawer({
         {/* Body (scrollable) */}
         <form
           id="add-party-form"
-          onSubmit={onSubmit}
+          onSubmit={handleSubmit}
+          noValidate
           className="flex-1 overflow-y-auto px-6 py-5"
         >
           {/* Name + phone */}
           <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
-            <input
-              ref={nameRef}
-              value={formState.name}
-              onChange={(e) => set({ name: e.target.value })}
-              placeholder="Party Name *"
-              className={FIELD_CLASS}
-            />
+            <div>
+              <input
+                ref={nameRef}
+                value={formState.name}
+                onChange={(e) => {
+                  set({ name: e.target.value });
+                  if (nameError) setNameError("");
+                }}
+                placeholder="Party Name *"
+                aria-invalid={!!nameError}
+                className={`w-full rounded-md border px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
+                  nameError
+                    ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
+                    : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+                }`}
+              />
+              {nameError && (
+                <p className="mt-1 text-xs text-rose-600">{nameError}</p>
+              )}
+            </div>
             <input
               value={formState.phone}
               onChange={(e) => set({ phone: e.target.value })}
@@ -508,10 +535,6 @@ export default function AddPartyDrawer({
                 )}
               </div> */}
             </div>
-          )}
-
-          {formError && (
-            <p className="mt-4 text-xs text-rose-600">{formError}</p>
           )}
         </form>
 

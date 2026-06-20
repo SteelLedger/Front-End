@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import PartyFilter from "../components/PartyFilter";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { emptyAddress } from "../utils/party";
 import {
   GetParties,
@@ -39,7 +40,7 @@ import {
 const PAGE_SIZE = 10;
 
 // Backend field names assumed for sorting — adjust if the API differs.
-const SORT_FIELD = { name: "name", amount: "balance" };
+const SORT_FIELD = { name: "name", amount: "amount" };
 
 /* ----------------------------- Mock transactions ----------------------------
  * The transactions endpoint isn't ready yet, so the detail panel shows this
@@ -212,9 +213,12 @@ function partyToForm(d) {
     addressLine2: a.addressLine2 || "",
     city: a.city || "",
     pincode: a.pincode || "",
-    stateId: typeof a.stateId === "object" ? (a.stateId?._id ?? "") : (a.stateId || ""),
+    stateId:
+      typeof a.stateId === "object" ? (a.stateId?._id ?? "") : a.stateId || "",
     countryId:
-      typeof a.countryId === "object" ? (a.countryId?._id ?? "") : (a.countryId || ""),
+      typeof a.countryId === "object"
+        ? (a.countryId?._id ?? "")
+        : a.countryId || "",
   });
   const billing =
     Array.isArray(d.billingAddresses) && d.billingAddresses.length
@@ -346,9 +350,11 @@ function Parties() {
   const [modalMode, setModalMode] = useState("add");
   const [editingId, setEditingId] = useState(null);
   const [formState, setFormState] = useState(emptyPartyForm);
-  const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
+
+  // Confirmation modal: { title, message, confirmLabel, onConfirm } | null
+  const [confirmState, setConfirmState] = useState(null);
 
   // Transactions (mock placeholder)
   const [txns, setTxns] = useState(MOCK_TRANSACTIONS);
@@ -478,7 +484,6 @@ function Parties() {
     setModalMode("add");
     setEditingId(null);
     setFormState(emptyPartyForm());
-    setFormError("");
     setModalOpen(true);
   }
 
@@ -488,7 +493,6 @@ function Parties() {
     setModalMode("edit");
     setEditingId(party.id);
     setFormState({ ...emptyPartyForm(), name: party.name || "" });
-    setFormError("");
     setModalOpen(true);
     setEditLoading(true);
     try {
@@ -496,7 +500,9 @@ function Parties() {
       const detail = res?.data?.data ?? res?.data ?? {};
       setFormState(partyToForm(detail));
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Couldn't load party details");
+      toast.error(
+        err?.response?.data?.message || "Couldn't load party details",
+      );
     } finally {
       setEditLoading(false);
     }
@@ -545,11 +551,7 @@ function Parties() {
 
   async function handleSaveParty(e) {
     e.preventDefault();
-    if (!formState.name.trim()) {
-      setFormError("Party name is required.");
-      return;
-    }
-    setFormError("");
+    if (!formState.name.trim()) return; // drawer surfaces the field error
     setSaving(true);
     try {
       const payload = buildPayload();
@@ -570,10 +572,17 @@ function Parties() {
     }
   }
 
-  async function handleDeleteParty(party, e) {
+  function requestDeleteParty(party, e) {
     e?.stopPropagation();
-    const ok = window.confirm(`Delete "${party.name}"? This can't be undone.`);
-    if (!ok) return;
+    setConfirmState({
+      title: "Delete party?",
+      message: `Are you sure you want to delete "${party.name}"? This can't be undone.`,
+      confirmLabel: "Yes, delete",
+      onConfirm: () => doDeleteParty(party),
+    });
+  }
+
+  async function doDeleteParty(party) {
     try {
       await DeleteParty(party.id);
       toast.success("Party deleted");
@@ -586,11 +595,14 @@ function Parties() {
     }
   }
 
-  function handleDeleteTransaction(txnId) {
-    const ok = window.confirm("Delete this transaction? This can't be undone.");
-    if (!ok) return;
-    setTxns((prev) => prev.filter((t) => t.id !== txnId));
+  function requestDeleteTransaction(txnId) {
     setOpenMenuTxnId(null);
+    setConfirmState({
+      title: "Delete transaction?",
+      message: "Are you sure you want to delete this transaction? This can't be undone.",
+      confirmLabel: "Yes, delete",
+      onConfirm: () => setTxns((prev) => prev.filter((t) => t.id !== txnId)),
+    });
   }
 
   function handlePrint() {
@@ -793,7 +805,7 @@ function Parties() {
                       </button>
                       <button
                         type="button"
-                        onClick={(e) => handleDeleteParty(p, e)}
+                        onClick={(e) => requestDeleteParty(p, e)}
                         aria-label={`Delete ${p.name}`}
                         title="Delete party"
                         className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
@@ -1051,7 +1063,7 @@ function Parties() {
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          handleDeleteTransaction(t.id)
+                                          requestDeleteTransaction(t.id)
                                         }
                                         className="w-full text-left text-sm text-rose-600 hover:bg-rose-50 px-3 py-2 flex items-center gap-2"
                                       >
@@ -1086,11 +1098,23 @@ function Parties() {
         mode={modalMode}
         formState={formState}
         setFormState={setFormState}
-        formError={formError}
         saving={saving}
         loading={editLoading}
         onClose={() => setModalOpen(false)}
         onSubmit={handleSaveParty}
+      />
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel}
+        onCancel={() => setConfirmState(null)}
+        onConfirm={() => {
+          const fn = confirmState?.onConfirm;
+          setConfirmState(null);
+          fn?.();
+        }}
       />
     </div>
   );
