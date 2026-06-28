@@ -6,7 +6,7 @@
    px sizes in the Dashboard and the sidebar/topbar chrome are scaled to match
    in their own files. */
 html {
-  font-size: 112.5%;
+  font-size: 106.25%;
 }
 
 /* Hide scrollbar visually while keeping scroll behaviour intact. */
