@@ -7,7 +7,6 @@ export const login = (data) => {
 export const GetAllCountryList = () => {
   return GET(`/location/countries`);
 };
-
 export const GetAllStateListByCountryId = (countryId) => {
   return GET(`/location/countries/${countryId}/states`);
 };

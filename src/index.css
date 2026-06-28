@@ -1,6 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* Base type scale — bump the root from the browser's 16px default to 18px so
+   the whole rem-based UI (text + spacing) reads larger on desktop. Hard-coded
+   px sizes in the Dashboard and the sidebar/topbar chrome are scaled to match
+   in their own files. */
+html {
+  font-size: 112.5%;
+}
+
 /* Hide scrollbar visually while keeping scroll behaviour intact. */
 @layer utilities {
   .no-scrollbar {

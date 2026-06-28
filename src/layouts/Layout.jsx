@@ -9,14 +9,15 @@ const NAV_SECTIONS = [
     items: [
       { label: "Dashboard", icon: HomeIcon, path: "/dashboard" },
       { label: "Parties", icon: UsersIcon, path: "/parties" },
-      { label: "Items", icon: BoxIcon, path: "/items" },
     ],
   },
   {
     section: "Transactions",
     items: [
-      { label: "Sales", icon: ReceiptIcon, badge: 3, path: "/sales" },
       { label: "Purchase", icon: CartIcon, path: "/purchase" },
+      { label: "Items", icon: BoxIcon, path: "/items" },
+      { label: "Inventory", icon: InventoryIcon, path: "/inventory" },
+      { label: "Sales", icon: ReceiptIcon, badge: 3, path: "/sales" },
     ],
   },
   {
@@ -35,6 +36,7 @@ const PAGE_SUBTITLES = {
   "/items": "Manage your product catalog and stock",
   "/sales": "Track invoices and payments received",
   "/purchase": "Track purchase bills and payments made",
+  "/inventory": "Raw material stock on hand by specification",
   "/reports": "Insights into your business performance",
   "/settings": "Manage your account and preferences",
 };
@@ -117,7 +119,7 @@ export default function Layout() {
               <LedgrLogo />
             </div>
             {!collapsed && (
-              <span className="text-[17px] font-bold text-white tracking-tight whitespace-nowrap select-none">
+              <span className="text-[19px] font-bold text-white tracking-tight whitespace-nowrap select-none">
                 Ledgr<span className="text-blue-400">.</span>
               </span>
             )}
@@ -151,7 +153,7 @@ export default function Layout() {
           {NAV_SECTIONS.map(({ section, items }) => (
             <div key={section}>
               {!collapsed ? (
-                <p className="px-2 pt-4 pb-1 text-[10px] font-semibold tracking-widest uppercase text-blue-300/40 select-none">
+                <p className="px-2 pt-4 pb-1 text-[11px] font-semibold tracking-widest uppercase text-blue-300/40 select-none">
                   {section}
                 </p>
               ) : (
@@ -165,7 +167,7 @@ export default function Layout() {
                     onClick={() => handleNav(path)}
                     title={collapsed ? label : undefined}
                     className={[
-                      "w-full flex items-center rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5",
+                      "w-full flex items-center rounded-lg text-[15px] font-medium transition-colors duration-100 mb-0.5",
                       collapsed
                         ? "justify-center px-0 py-2.5 gap-0"
                         : "gap-3 px-3 py-2.5",
@@ -183,7 +185,7 @@ export default function Layout() {
                       </span>
                     )}
                     {!collapsed && badge && (
-                      <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                      <span className="bg-red-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none">
                         {badge}
                       </span>
                     )}
@@ -195,7 +197,10 @@ export default function Layout() {
         </nav>
 
         {/* User */}
-        <div className="border-t border-white/10 p-2 flex-shrink-0 relative" ref={userMenuRef}>
+        <div
+          className="border-t border-white/10 p-2 flex-shrink-0 relative"
+          ref={userMenuRef}
+        >
           {userMenuOpen && (
             <div
               className={[
@@ -207,7 +212,7 @@ export default function Layout() {
             >
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-[15px] font-medium text-rose-600 hover:bg-rose-50 transition-colors"
               >
                 <LogoutIcon />
                 Logout
@@ -222,16 +227,16 @@ export default function Layout() {
               collapsed ? "justify-center" : "",
             ].join(" ")}
           >
-            <div className="w-7 h-7 min-w-[1.75rem] rounded-full bg-[#1E4D96] flex items-center justify-center text-[11px] font-semibold text-blue-200 flex-shrink-0">
+            <div className="w-7 h-7 min-w-[1.75rem] rounded-full bg-[#1E4D96] flex items-center justify-center text-[12px] font-semibold text-blue-200 flex-shrink-0">
               {user.initials}
             </div>
             {!collapsed && (
               <>
                 <div className="min-w-0 flex-1 text-left">
-                  <p className="text-[13px] font-medium text-blue-200 truncate">
+                  <p className="text-[15px] font-medium text-blue-200 truncate">
                     {userName}
                   </p>
-                  <p className="text-[11px] text-blue-300/40 truncate">
+                  <p className="text-[12px] text-blue-300/40 truncate">
                     {userRole}
                   </p>
                 </div>
@@ -257,11 +262,11 @@ export default function Layout() {
               <MenuIcon />
             </button>
             <div>
-              <h1 className="text-[16px] font-bold text-[#0A1628] leading-tight">
+              <h1 className="text-[18px] font-bold text-[#0A1628] leading-tight">
                 {activeLabel}
               </h1>
               {subtitle && (
-                <p className="text-[13px] text-slate-400 hidden sm:block leading-tight mt-0.5">
+                <p className="text-[15px] text-slate-400 hidden sm:block leading-tight mt-0.5">
                   {subtitle}
                 </p>
               )}
@@ -269,7 +274,7 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
+            <span className="hidden sm:flex items-center gap-1.5 text-[12px] text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
               <CalendarIcon />
               June 2026
             </span>
@@ -280,7 +285,7 @@ export default function Layout() {
               <BellIcon />
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
             </button>
-            <button className="flex items-center gap-1.5 bg-[#1E4D96] hover:bg-[#1A3F7A] text-white text-[12px] font-semibold px-3 py-2 rounded-lg transition-colors">
+            <button className="flex items-center gap-1.5 bg-[#1E4D96] hover:bg-[#1A3F7A] text-white text-[14px] font-semibold px-3 py-2 rounded-lg transition-colors">
               <PlusIcon />
               <span className="hidden sm:inline">New Sale</span>
             </button>
@@ -414,6 +419,21 @@ function CartIcon() {
     </svg>
   );
 }
+function InventoryIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      width="18"
+      height="18"
+    >
+      <path d="M2 6.5L10 3l8 3.5-8 3.5-8-3.5z" />
+      <path d="M2 10l8 3.5L18 10M2 13.5L10 17l8-3.5" />
+    </svg>
+  );
+}
 function ChartIcon() {
   return (
     <svg
@@ -514,7 +534,11 @@ function LogoutIcon() {
       height="16"
     >
       <path d="M8 17H4a1 1 0 01-1-1V4a1 1 0 011-1h4" />
-      <path d="M13 14l4-4-4-4M17 10H8" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M13 14l4-4-4-4M17 10H8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -528,7 +552,11 @@ function ChevronUpDownIcon() {
       width="14"
       height="14"
     >
-      <path d="M7 8l3-3 3 3M7 12l3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M7 8l3-3 3 3M7 12l3 3 3-3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

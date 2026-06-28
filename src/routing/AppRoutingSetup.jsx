@@ -8,6 +8,8 @@ import ProtectedRoute from "./ProtectedRoute";
 import Layout from "../layouts/Layout";
 import Dashboard from "../pages/Dashboard";
 import Parties from "../pages/Parties";
+import Purchase from "../pages/Purchase";
+import Inventory from "../pages/Inventory";
 import ComingSoon from "../pages/ComingSoon";
 import NotFound from "../pages/NotFound";
 
@@ -51,7 +53,11 @@ const router = createBrowserRouter([
           },
           {
             path: "/purchase",
-            element: <ComingSoon title="Purchase" />,
+            element: <Purchase />,
+          },
+          {
+            path: "/inventory",
+            element: <Inventory />,
           },
           {
             path: "/reports",

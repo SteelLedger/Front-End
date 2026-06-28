@@ -182,23 +182,23 @@ export default function Dashboard() {
               key={label}
               className="bg-white rounded-xl border border-slate-200 p-4 relative overflow-hidden"
             >
-              <p className="text-[11px] text-slate-500 font-medium mb-1.5 pr-9 leading-tight">
+              <p className="text-[12px] text-slate-500 font-medium mb-1.5 pr-9 leading-tight">
                 {label}
               </p>
               <p
-                className={`text-[17px] font-bold tracking-tight leading-tight ${valueClass}`}
+                className={`text-[19px] font-bold tracking-tight leading-tight ${valueClass}`}
               >
                 {value}
               </p>
               <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                 {trend && (
                   <span
-                    className={`text-[10px] font-semibold ${trendUp ? "text-green-600" : "text-red-500"}`}
+                    className={`text-[11px] font-semibold ${trendUp ? "text-green-600" : "text-red-500"}`}
                   >
                     {trend}
                   </span>
                 )}
-                <span className="text-[10px] text-slate-400">{sub}</span>
+                <span className="text-[11px] text-slate-400">{sub}</span>
               </div>
               <div
                 className={`absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center ${accentBg} ${accentText}`}
@@ -217,19 +217,19 @@ export default function Dashboard() {
         {/* Bar chart */}
         <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-4 lg:p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[13px] font-bold text-[#0A1628]">
+            <h2 className="text-[15px] font-bold text-[#0A1628]">
               Sales vs Purchase
             </h2>
-            <span className="text-[11px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
+            <span className="text-[12px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
               Last 6 months
             </span>
           </div>
           <div className="flex gap-4 mb-3">
-            <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span className="flex items-center gap-1.5 text-[12px] text-slate-500">
               <span className="w-2.5 h-2.5 rounded-sm bg-[#1E4D96]" />
               Sales
             </span>
-            <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span className="flex items-center gap-1.5 text-[12px] text-slate-500">
               <span className="w-2.5 h-2.5 rounded-sm bg-[#5DCAA5]" />
               Purchase
             </span>
@@ -243,12 +243,12 @@ export default function Dashboard() {
               />
               <XAxis
                 dataKey="month"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tick={{ fontSize: 12, fill: "#94a3b8" }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: "#94a3b8" }}
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => `₹${v}k`}
@@ -276,10 +276,10 @@ export default function Dashboard() {
         {/* Donut chart */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4 lg:p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[13px] font-bold text-[#0A1628]">
+            <h2 className="text-[15px] font-bold text-[#0A1628]">
               Party-wise Sales
             </h2>
-            <span className="text-[11px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
+            <span className="text-[12px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
               Top 5
             </span>
           </div>
@@ -305,7 +305,7 @@ export default function Dashboard() {
             {partyData.map((p, i) => (
               <span
                 key={p.name}
-                className="flex items-center gap-1.5 text-[10px] text-slate-500 truncate"
+                className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate"
               >
                 <span
                   className="w-2 h-2 rounded-sm flex-shrink-0"
@@ -325,10 +325,10 @@ export default function Dashboard() {
         {/* Recent sales */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 lg:p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[13px] font-bold text-[#0A1628]">
+            <h2 className="text-[15px] font-bold text-[#0A1628]">
               Recent Sales
             </h2>
-            <button className="text-[11px] text-[#1E4D96] font-semibold hover:underline">
+            <button className="text-[12px] text-[#1E4D96] font-semibold hover:underline">
               View all →
             </button>
           </div>
@@ -338,24 +338,24 @@ export default function Dashboard() {
               className="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0"
             >
               <div className="min-w-0 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-[11px] font-bold text-[#1E4D96] flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-[12px] font-bold text-[#1E4D96] flex-shrink-0">
                   {s.party.charAt(0)}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[12.5px] font-semibold text-[#0A1628] truncate">
+                  <p className="text-[14px] font-semibold text-[#0A1628] truncate">
                     {s.party}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-[12px] text-slate-400 mt-0.5">
                     {s.invoice} · {s.items} items
                   </p>
                 </div>
               </div>
               <div className="text-right ml-3 flex-shrink-0">
-                <p className="text-[13px] font-bold text-[#0A1628]">
+                <p className="text-[15px] font-bold text-[#0A1628]">
                   {s.amount}
                 </p>
                 <span
-                  className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-semibold mt-0.5 ${STATUS_CLASS[s.status]}`}
+                  className={`inline-block text-[11px] px-2 py-0.5 rounded-full font-semibold mt-0.5 ${STATUS_CLASS[s.status]}`}
                 >
                   {s.status}
                 </span>
@@ -367,10 +367,10 @@ export default function Dashboard() {
         {/* Low stock */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 lg:p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[13px] font-bold text-[#0A1628]">
+            <h2 className="text-[15px] font-bold text-[#0A1628]">
               Low Stock Alerts
             </h2>
-            <button className="text-[11px] text-[#1E4D96] font-semibold hover:underline">
+            <button className="text-[12px] text-[#1E4D96] font-semibold hover:underline">
               Reorder →
             </button>
           </div>
@@ -385,14 +385,14 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[12.5px] font-semibold text-[#0A1628] truncate">
+                <p className="text-[14px] font-semibold text-[#0A1628] truncate">
                   {item.name}
                 </p>
-                <p className="text-[11px] text-red-500 mt-0.5">
+                <p className="text-[12px] text-red-500 mt-0.5">
                   Only {item.qty} units left
                 </p>
               </div>
-              <button className="text-[11px] font-semibold text-[#1E4D96] bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0">
+              <button className="text-[12px] font-semibold text-[#1E4D96] bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0">
                 Order
               </button>
             </div>

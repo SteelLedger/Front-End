@@ -1,10 +1,11 @@
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import AppRoutingSetup from "./routing/AppRoutingSetup";
+import { RawMaterialProvider } from "./context/RawMaterialProvider";
 
 const App = () => {
   return (
-    <>
+    <RawMaterialProvider>
       <AppRoutingSetup />
       <ToastContainer
         position="top-right"
@@ -12,7 +13,7 @@ const App = () => {
         newestOnTop
         theme="colored"
       />
-    </>
+    </RawMaterialProvider>
   );
 };
 
