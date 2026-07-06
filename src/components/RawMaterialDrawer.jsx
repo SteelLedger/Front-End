@@ -2,10 +2,6 @@ import { useEffect, useRef } from "react";
 import { X, Plus, Check } from "lucide-react";
 import SearchableSelect from "./SearchableSelect";
 
-const FIELD_CLASS =
-  "w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm text-slate-700 " +
-  "placeholder:text-slate-400 focus:outline-none focus:border-[#1E4D96] focus:ring-1 focus:ring-[#1E4D96]/30";
-
 function Field({ label, required, children }) {
   return (
     <label className="block">
@@ -18,10 +14,14 @@ function Field({ label, required, children }) {
   );
 }
 
+// Required fields (matches the create/update API contract).
+const REQUIRED = ["supplier", "invoiceNumber", "date", "size", "point", "grade", "quantity"];
+
 /**
  * RawMaterialDrawer
- * Right-side slide-in panel for creating / editing a raw-material (Patta) sheet.
- * Fields: supplier, date, size, point, grade, quantity.
+ * Right-side slide-in panel for creating / editing a purchase (raw-material /
+ * Patta sheet). Fields: supplier, invoice number, date, size, point, grade,
+ * quantity. The supplier picker resolves to a real party id (`partyId`).
  *
  * Form state lives in the parent (`formState` / `setFormState`).
  */
@@ -39,7 +39,6 @@ export default function RawMaterialDrawer({
 }) {
   const supplierRef = useRef(null);
 
-  // Focus the first field each time the drawer opens.
   useEffect(() => {
     if (!open) return;
     const id = requestAnimationFrame(() => supplierRef.current?.focus());
@@ -47,8 +46,7 @@ export default function RawMaterialDrawer({
   }, [open]);
 
   // Close on Escape + lock background scroll while open. `closeOnEscape` is
-  // turned off while the party drawer is stacked on top, so Escape there only
-  // closes that drawer — not this one underneath.
+  // turned off while the party drawer is stacked on top.
   useEffect(() => {
     if (!open) return;
     function onKey(e) {
@@ -63,21 +61,57 @@ export default function RawMaterialDrawer({
     };
   }, [open, onClose, closeOnEscape]);
 
-  const set = (patch) => setFormState((f) => ({ ...f, ...patch }));
+  // Update a field and clear any validation error.
+  const update = (field, value) =>
+    setFormState((f) => ({ ...f, [field]: value, error: "", errorFields: [] }));
 
-  // Supplier is the only required field; validate before handing off to save.
+  // Resolve the typed/selected supplier name to a real party id.
+  function pickSupplier(val) {
+    const match = supplierOptions.find(
+      (o) => o.name.trim().toLowerCase() === val.trim().toLowerCase(),
+    );
+    setFormState((f) => ({
+      ...f,
+      supplier: val,
+      partyId: match ? match.id : "",
+      error: "",
+      errorFields: [],
+    }));
+  }
+
+  function fieldMissing(name) {
+    if (name === "supplier") return !formState.partyId;
+    if (name === "quantity")
+      return formState.quantity === "" || formState.quantity == null;
+    return !String(formState[name] ?? "").trim();
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
-    if (!formState.supplier.trim()) {
-      set({ error: "Supplier is required." });
+    const missing = REQUIRED.filter(fieldMissing);
+    if (missing.length) {
+      const supplierUnmatched = !formState.partyId && formState.supplier.trim();
+      setFormState((f) => ({
+        ...f,
+        errorFields: missing,
+        error: supplierUnmatched
+          ? "Select a supplier from the list (or add a new one)."
+          : "Please fill all required fields.",
+      }));
       supplierRef.current?.focus();
       return;
     }
-    set({ error: "" });
+    setFormState((f) => ({ ...f, error: "", errorFields: [] }));
     onSubmit(e);
   }
 
-  const error = formState.error;
+  const errs = formState.errorFields || [];
+  const fieldClass = (name) =>
+    `w-full rounded-md border px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
+      errs.includes(name)
+        ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
+        : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+    }`;
 
   return (
     <div
@@ -96,7 +130,7 @@ export default function RawMaterialDrawer({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={mode === "add" ? "Add Raw Material Sheet" : "Edit Raw Material Sheet"}
+        aria-label={mode === "add" ? "Add Purchase" : "Edit Purchase"}
         className={`absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-xl transition-transform duration-300 ease-out ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
@@ -105,7 +139,7 @@ export default function RawMaterialDrawer({
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h3 className="text-lg font-bold text-slate-900">
-              {mode === "add" ? "Add Raw Material Sheet" : "Edit Raw Material Sheet"}
+              {mode === "add" ? "Add Purchase" : "Edit Purchase"}
             </h3>
             <p className="text-xs text-slate-400">Patta — raw material stock</p>
           </div>
@@ -126,9 +160,13 @@ export default function RawMaterialDrawer({
           noValidate
           className="flex-1 overflow-y-auto px-6 py-5"
         >
+          {formState.error && (
+            <p className="mb-3 rounded-md bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600">
+              {formState.error}
+            </p>
+          )}
           <div className="space-y-4">
-            {/* Supplier — searchable dropdown (not wrapped in <label> so clicking
-                a dropdown option doesn't re-focus the input). */}
+            {/* Supplier — searchable dropdown resolving to a party id. */}
             <div>
               <span className="mb-1.5 block text-xs font-semibold text-slate-600">
                 Supplier<span className="ml-0.5 text-rose-500">*</span>
@@ -138,13 +176,11 @@ export default function RawMaterialDrawer({
                   <SearchableSelect
                     inputRef={supplierRef}
                     value={formState.supplier}
-                    onChange={(val) => {
-                      set({ supplier: val });
-                      if (error) set({ error: "" });
-                    }}
-                    options={supplierOptions}
+                    onChange={pickSupplier}
+                    options={supplierOptions.map((o) => o.name)}
                     placeholder="Search or select a supplier"
-                    invalid={!!error}
+                    invalid={errs.includes("supplier")}
+                    allowCustom={false}
                   />
                 </div>
                 <button
@@ -157,55 +193,63 @@ export default function RawMaterialDrawer({
                   <Plus size={18} strokeWidth={2.5} />
                 </button>
               </div>
-              {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
             </div>
 
-            <Field label="Date">
+            <Field label="Invoice Number" required>
+              <input
+                value={formState.invoiceNumber}
+                onChange={(e) => update("invoiceNumber", e.target.value)}
+                placeholder="e.g. INV-2024-001"
+                className={fieldClass("invoiceNumber")}
+              />
+            </Field>
+
+            <Field label="Date" required>
               <input
                 type="date"
                 value={formState.date}
-                onChange={(e) => set({ date: e.target.value })}
-                className={FIELD_CLASS}
+                onChange={(e) => update("date", e.target.value)}
+                className={fieldClass("date")}
               />
             </Field>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Size">
+              <Field label="Size" required>
                 <input
                   value={formState.size}
-                  onChange={(e) => set({ size: e.target.value })}
-                  placeholder="e.g. 100"
-                  className={FIELD_CLASS}
+                  onChange={(e) => update("size", e.target.value)}
+                  placeholder="e.g. 10"
+                  className={fieldClass("size")}
                 />
               </Field>
-              <Field label="Point">
+              <Field label="Point" required>
                 <input
                   value={formState.point}
-                  onChange={(e) => set({ point: e.target.value })}
+                  onChange={(e) => update("point", e.target.value)}
                   placeholder="e.g. 120p"
-                  className={FIELD_CLASS}
+                  className={fieldClass("point")}
                 />
               </Field>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Grade">
+              <Field label="Grade" required>
                 <input
                   value={formState.grade}
-                  onChange={(e) => set({ grade: e.target.value })}
+                  onChange={(e) => update("grade", e.target.value)}
                   placeholder="e.g. M5"
-                  className={FIELD_CLASS}
+                  className={fieldClass("grade")}
                 />
               </Field>
-              <Field label="Quantity">
+              <Field label="Quantity" required>
                 <input
                   type="number"
                   inputMode="numeric"
                   min="0"
                   value={formState.quantity}
-                  onChange={(e) => set({ quantity: e.target.value })}
-                  placeholder="e.g. 100"
-                  className={FIELD_CLASS}
+                  onChange={(e) => update("quantity", e.target.value)}
+                  placeholder="e.g. 250"
+                  className={fieldClass("quantity")}
                 />
               </Field>
             </div>
@@ -227,14 +271,18 @@ export default function RawMaterialDrawer({
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-md bg-[#1E4D96] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
           >
-            {mode === "add" ? <Plus size={16} strokeWidth={2.5} /> : <Check size={16} strokeWidth={2.5} />}
+            {mode === "add" ? (
+              <Plus size={16} strokeWidth={2.5} />
+            ) : (
+              <Check size={16} strokeWidth={2.5} />
+            )}
             {saving
               ? mode === "add"
                 ? "Adding…"
                 : "Updating…"
               : mode === "add"
-                ? "Add Sheet"
-                : "Update Sheet"}
+                ? "Add Purchase"
+                : "Update Purchase"}
           </button>
         </div>
       </div>

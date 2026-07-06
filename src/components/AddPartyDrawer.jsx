@@ -133,6 +133,22 @@ export default function AddPartyDrawer({
       [kind]: f[kind].filter((_, i) => i !== index),
     }));
 
+  const notes = formState.notes || [];
+  const updateNote = (index, content) =>
+    setFormState((f) => ({
+      ...f,
+      notes: (f.notes || []).map((n, i) =>
+        i === index ? { ...n, content } : n,
+      ),
+    }));
+  const addNote = () =>
+    setFormState((f) => ({ ...f, notes: [...(f.notes || []), { content: "" }] }));
+  const removeNote = (index) =>
+    setFormState((f) => ({
+      ...f,
+      notes: (f.notes || []).filter((_, i) => i !== index),
+    }));
+
   function renderAddressCards(kind, addLabel) {
     const list = formState[kind] || [];
     return (
@@ -349,6 +365,9 @@ export default function AddPartyDrawer({
             >
               Credit &amp; Balance
             </TabButton>
+            <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>
+              Notes
+            </TabButton>
           </div>
 
           {/* Tab: Tax & Address */}
@@ -534,6 +553,45 @@ export default function AddPartyDrawer({
                   />
                 )}
               </div> */}
+            </div>
+          )}
+
+          {/* Tab: Notes */}
+          {tab === "notes" && (
+            <div className="mt-6 max-w-2xl space-y-3">
+              {notes.map((n, i) => (
+                <div key={i} className="rounded-lg border border-slate-200 p-3">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500">
+                      Note {i + 1}
+                    </span>
+                    {notes.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeNote(i)}
+                        aria-label="Remove note"
+                        className="text-slate-400 transition-colors hover:text-rose-600"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={n.content}
+                    onChange={(e) => updateNote(i, e.target.value)}
+                    placeholder="Write a note about this party…"
+                    className={`${FIELD_CLASS} resize-none`}
+                  />
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addNote}
+                className="flex items-center gap-1 text-xs font-semibold text-[#1E4D96] hover:underline"
+              >
+                <Plus size={13} /> Add Another Note
+              </button>
             </div>
           )}
         </form>

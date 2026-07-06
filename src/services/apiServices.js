@@ -51,3 +51,65 @@ export const updateParty = (id, data) => {
 export const DeleteParty = (deleteId) => {
   return DELETE(`/parties/${deleteId}`);
 };
+
+/* ------------------------------- Transactions ------------------------------ */
+
+export const GetTransactionWithParty = (partyId, page = 1, limit = 10) => {
+  return GET(`/transactions?partyId=${partyId}&page=${page}&limit=${limit}`);
+};
+
+export const GetTransactionWithPartyAndPurchase = (
+  partyId,
+  type,
+  page = 1,
+  limit = 10,
+) => {
+  return GET(
+    `/transactions?partyId=${partyId}&type=${type}&page=${page}&limit=${limit}`,
+  );
+};
+
+/* -------------------------------- Purchases -------------------------------- */
+
+export const GetPurchases = ({ search, sortBy, sortOrder, page, limit } = {}) => {
+  const qs = new URLSearchParams();
+  if (search) qs.append("search", search);
+  if (sortBy) qs.append("sortBy", sortBy);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/purchases${q ? `?${q}` : ""}`);
+};
+
+export const createPurchase = (data) => {
+  return POST(`/purchases`, data);
+};
+
+export const updatePurchase = (id, data) => {
+  return PUT(`/purchases/${id}`, data);
+};
+
+export const DeletePurchase = (id) => {
+  return DELETE(`/purchases/${id}`);
+};
+
+/* ------------------------------ Raw materials ------------------------------ */
+
+// Aggregated raw-material inventory (stock by size/point/grade).
+export const GetRawMaterials = ({
+  search,
+  sortBy,
+  sortOrder,
+  page,
+  limit,
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (search) qs.append("search", search);
+  if (sortBy) qs.append("sortBy", sortBy);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/raw-materials${q ? `?${q}` : ""}`);
+};

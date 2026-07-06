@@ -10,6 +10,7 @@ import Dashboard from "../pages/Dashboard";
 import Parties from "../pages/Parties";
 import Purchase from "../pages/Purchase";
 import Inventory from "../pages/Inventory";
+import Items from "../pages/Items";
 import ComingSoon from "../pages/ComingSoon";
 import NotFound from "../pages/NotFound";
 
@@ -42,11 +43,11 @@ const router = createBrowserRouter([
             path: "/parties",
             element: <Parties />,
           },
-          // Modules not built yet — placeholders so QA doesn't hit blank screens.
           {
             path: "/items",
-            element: <ComingSoon title="Items" />,
+            element: <Items />,
           },
+          // Modules not built yet — placeholders so QA doesn't hit blank screens.
           {
             path: "/sales",
             element: <ComingSoon title="Sales" />,

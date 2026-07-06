@@ -44,6 +44,7 @@ export function emptyPartyForm() {
     billingAddresses: [emptyAddress()],
     shippingAddresses: [emptyAddress()],
     sameAsShipping: false,
+    notes: [{ content: "" }],
     openingBalance: "",
     asOfDate: todayISO(),
     balanceType: "to_receive",
@@ -79,12 +80,20 @@ export function buildPartyPayload(formState) {
       })
     : formState.shippingAddresses.filter(isFilled).map(cleanAddress);
 
+  const notes = (formState.notes || [])
+    .filter((n) => n.content && n.content.trim())
+    .map((n) => ({
+      ...(n._id ? { _id: n._id } : {}),
+      content: n.content.trim(),
+    }));
+
   return {
     name: formState.name.trim(),
     phone: formState.phone.trim(),
     email: formState.email.trim(),
     billingName: formState.billingName.trim(),
     tin: formState.tin.trim(),
+    notes,
     billingAddresses,
     shippingAddresses,
     openingBalance: Number(formState.openingBalance) || 0,

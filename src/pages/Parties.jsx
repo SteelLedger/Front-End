@@ -9,7 +9,6 @@ import {
   MessageCircle,
   Phone,
   Clock,
-  MoreVertical,
   X,
   ArrowUpRight,
   ArrowDownLeft,
@@ -24,6 +23,7 @@ import {
   Wallet,
   Inbox,
   Loader2,
+  StickyNote,
 } from "lucide-react";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import PartyFilter from "../components/PartyFilter";
@@ -41,63 +41,79 @@ import {
   createParty,
   updateParty,
   DeleteParty,
+  GetTransactionWithParty,
+  GetTransactionWithPartyAndPurchase,
 } from "../services/apiServices";
 
 const PAGE_SIZE = 10;
+const TXN_PAGE_SIZE = 10;
 
 // Backend field names assumed for sorting — adjust if the API differs.
 const SORT_FIELD = { name: "name", amount: "amount" };
 
-/* ----------------------------- Mock transactions ----------------------------
- * The transactions endpoint isn't ready yet, so the detail panel shows this
- * static placeholder for whichever party is selected. Swap for a real
- * GET /parties/:id/transactions call once it exists.
- * -------------------------------------------------------------------------- */
-const MOCK_TRANSACTIONS = [
-  {
-    id: 101,
-    type: "Sale",
-    number: "1530",
-    date: "14/06/2026",
-    total: 11,
-    balance: 11,
+// Backend transaction type (snake_case) -> label + icon + colors.
+const TXN_TYPE_META = {
+  sale: {
+    label: "Sale",
+    icon: TrendingUp,
+    color: "text-emerald-600",
+    bg: "bg-emerald-50",
   },
-  {
-    id: 102,
-    type: "Sale",
-    number: "1498",
-    date: "28/05/2026",
-    total: 2266,
-    balance: 2266,
+  purchase: {
+    label: "Purchase",
+    icon: ShoppingCart,
+    color: "text-blue-600",
+    bg: "bg-blue-50",
   },
-  {
-    id: 103,
-    type: "Payment In",
-    number: "PAY-88",
-    date: "18/05/2026",
-    total: 3000,
-    balance: 0,
-  },
-];
-
-const TYPE_META = {
-  Sale: { icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
-  Purchase: { icon: ShoppingCart, color: "text-blue-600", bg: "bg-blue-50" },
-  "Payment In": {
+  payment_in: {
+    label: "Payment In",
     icon: ArrowDownLeft,
     color: "text-teal-600",
     bg: "bg-teal-50",
   },
-  "Payment Out": {
+  payment_out: {
+    label: "Payment Out",
     icon: ArrowUpRight,
     color: "text-rose-600",
     bg: "bg-rose-50",
   },
-  "Opening Balance": {
+  receivable_opening_balance: {
+    label: "Opening Balance",
     icon: Wallet,
     color: "text-slate-500",
     bg: "bg-slate-100",
   },
+  payable_opening_balance: {
+    label: "Opening Balance",
+    icon: Wallet,
+    color: "text-slate-500",
+    bg: "bg-slate-100",
+  },
+};
+
+function titleCase(s) {
+  return String(s || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function txnMeta(type) {
+  return (
+    TXN_TYPE_META[type] || {
+      label: titleCase(type) || "—",
+      icon: Wallet,
+      color: "text-slate-500",
+      bg: "bg-slate-100",
+    }
+  );
+}
+
+// Filter chip -> backend `type` values (empty = all). The backend transaction
+// types are only sale / purchase / opening-balance — there are no payments.
+const TXN_FILTER_TYPES = {
+  All: [],
+  Sale: ["sale"],
+  Purchase: ["purchase"],
 };
 
 const PARTY_TYPE_META = {
@@ -207,6 +223,10 @@ function partyToForm(d) {
     email: d.email || "",
     billingName: d.billingName || "",
     tin: d.tin || "",
+    notes:
+      Array.isArray(d.notes) && d.notes.length
+        ? d.notes.map((n) => ({ _id: n._id, content: n.content || "" }))
+        : [{ content: "" }],
     billingAddresses: billing,
     shippingAddresses: shipping,
     openingBalance: obAmount != null ? String(obAmount) : "",
@@ -215,14 +235,41 @@ function partyToForm(d) {
   };
 }
 
-function getStatus(txn) {
-  const bal = Math.abs(txn.balance);
-  const tot = Math.abs(txn.total);
-  if (bal === 0)
-    return { label: "Paid", color: "text-emerald-700", bg: "bg-emerald-50" };
-  if (tot === 0 || bal === tot)
-    return { label: "Pending", color: "text-amber-700", bg: "bg-amber-50" };
-  return { label: "Partial", color: "text-blue-700", bg: "bg-blue-50" };
+function formatTxnDate(d) {
+  if (!d) return "";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d; // already dd/mm/yyyy
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return String(d);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`;
+}
+
+// Map a raw transaction from the API into the shape the table renders with.
+// `total`/`balance` are kept null-able so the table can show a dash when a value
+// isn't applicable (e.g. purchases carry quantity, not an amount).
+function normalizeTxn(raw) {
+  const num = (v) => (v == null || v === "" ? null : Number(v));
+  return {
+    id: raw._id ?? raw.id,
+    type: raw.type || "",
+    number:
+      raw.number ?? raw.invoiceNumber ?? raw.billNumber ?? raw.txnNumber ?? "-",
+    date: formatTxnDate(raw.date ?? raw.createdAt),
+    total: num(raw.total ?? raw.amount),
+    balance: num(raw.balance ?? raw.pending ?? raw.dueAmount),
+  };
+}
+
+// Dig the transactions list + total out of the response envelope.
+function extractTxns(res) {
+  const body = res?.data ?? {};
+  const d = body.data ?? body;
+  const list = Array.isArray(d)
+    ? d
+    : (d.transactions ?? d.results ?? d.items ?? d.docs ?? []);
+  const pg = body.meta?.pagination ?? {};
+  const total = pg.total ?? d.total ?? (Array.isArray(list) ? list.length : 0);
+  return { list: Array.isArray(list) ? list : [], total: Number(total) || 0 };
 }
 
 /* ------------------------------- Small UI bits ------------------------------- */
@@ -324,17 +371,25 @@ function Parties() {
   // Confirmation modal: { title, message, confirmLabel, onConfirm } | null
   const [confirmState, setConfirmState] = useState(null);
 
-  // Transactions (mock placeholder)
-  const [txns, setTxns] = useState(MOCK_TRANSACTIONS);
+  // Notes of the selected party (fetched from the detail endpoint).
+  const [selectedNotes, setSelectedNotes] = useState([]);
+  const [notesOpen, setNotesOpen] = useState(false); // mobile notes popover
+  const notesRef = useRef(null);
+
+  // Transactions (per-party, server-driven)
+  const [txns, setTxns] = useState([]);
+  const [txnLoading, setTxnLoading] = useState(false);
+  const [txnError, setTxnError] = useState("");
+  const [txnTotal, setTxnTotal] = useState(0);
+  const [txnPage, setTxnPage] = useState(1);
   const [txnFilter, setTxnFilter] = useState("All");
   const [txnSearchOpen, setTxnSearchOpen] = useState(false);
   const [txnSearch, setTxnSearch] = useState("");
-  const [openMenuTxnId, setOpenMenuTxnId] = useState(null);
 
   const detailRef = useRef(null);
-  const menuRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const txnTotalPages = Math.max(1, Math.ceil(txnTotal / TXN_PAGE_SIZE));
 
   // Debounce the search box (and reset to page 1).
   useEffect(() => {
@@ -381,11 +436,68 @@ function Parties() {
     fetchParties();
   }, [fetchParties]);
 
-  // Close the transaction row menu on outside click.
+  // Fetch the selected party's transactions (by type filter + page).
+  const fetchTransactions = useCallback(async () => {
+    if (!selectedId) {
+      setTxns([]);
+      setTxnTotal(0);
+      return;
+    }
+    setTxnLoading(true);
+    setTxnError("");
+    try {
+      const types = TXN_FILTER_TYPES[txnFilter] || [];
+      const res = types.length
+        ? await GetTransactionWithPartyAndPurchase(
+            selectedId,
+            types[0],
+            txnPage,
+            TXN_PAGE_SIZE,
+          )
+        : await GetTransactionWithParty(selectedId, txnPage, TXN_PAGE_SIZE);
+      const { list, total: t } = extractTxns(res);
+      setTxns(list.map(normalizeTxn));
+      setTxnTotal(t);
+    } catch (err) {
+      setTxns([]);
+      setTxnError(
+        err?.response?.data?.message || "Couldn't load transactions.",
+      );
+    } finally {
+      setTxnLoading(false);
+    }
+  }, [selectedId, txnFilter, txnPage]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchTransactions();
+  }, [fetchTransactions]);
+
+  // Fetch the selected party's notes (from the detail endpoint).
+  const fetchSelectedNotes = useCallback(async () => {
+    if (!selectedId) {
+      setSelectedNotes([]);
+      return;
+    }
+    try {
+      const res = await getPartyById(selectedId);
+      const d = res?.data?.data ?? res?.data ?? {};
+      setSelectedNotes(Array.isArray(d.notes) ? d.notes : []);
+    } catch {
+      setSelectedNotes([]);
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSelectedNotes();
+  }, [fetchSelectedNotes]);
+
+  // Close the mobile notes popover on outside click.
   useEffect(() => {
     function handleClickOutside(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setOpenMenuTxnId(null);
+      if (notesRef.current && !notesRef.current.contains(e.target)) {
+        setNotesOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -394,19 +506,12 @@ function Parties() {
 
   const selectedParty = parties.find((p) => p.id === selectedId) || null;
 
+  // Client-side number search over the currently loaded page (no search param).
   const filteredTransactions = useMemo(() => {
-    let list = txns;
-    if (txnFilter === "Sale") list = list.filter((t) => t.type === "Sale");
-    else if (txnFilter === "Purchase")
-      list = list.filter((t) => t.type === "Purchase");
-    else if (txnFilter === "Payments")
-      list = list.filter((t) => t.type.startsWith("Payment"));
-    if (txnSearch.trim()) {
-      const q = txnSearch.trim().toLowerCase();
-      list = list.filter((t) => t.number.toLowerCase().includes(q));
-    }
-    return list;
-  }, [txns, txnFilter, txnSearch]);
+    if (!txnSearch.trim()) return txns;
+    const q = txnSearch.trim().toLowerCase();
+    return txns.filter((t) => String(t.number).toLowerCase().includes(q));
+  }, [txns, txnSearch]);
 
   // Best-effort totals from the current page (no summary endpoint yet).
   const pageTotals = useMemo(() => {
@@ -421,11 +526,11 @@ function Parties() {
 
   function handleSelectParty(id) {
     setSelectedId(id);
-    setTxns(MOCK_TRANSACTIONS);
     setTxnFilter("All");
+    setTxnPage(1);
     setTxnSearch("");
     setTxnSearchOpen(false);
-    setOpenMenuTxnId(null);
+    setNotesOpen(false);
     requestAnimationFrame(() => {
       if (window.innerWidth < 1024 && detailRef.current) {
         const reduceMotion =
@@ -491,6 +596,7 @@ function Parties() {
         toast.success("Party updated");
       }
       await fetchParties();
+      if (modalMode === "edit") fetchSelectedNotes();
       setModalOpen(false);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Couldn't save party");
@@ -520,16 +626,6 @@ function Parties() {
     } catch (err) {
       toast.error(err?.response?.data?.message || "Couldn't delete party");
     }
-  }
-
-  function requestDeleteTransaction(txnId) {
-    setOpenMenuTxnId(null);
-    setConfirmState({
-      title: "Delete transaction?",
-      message: "Are you sure you want to delete this transaction? This can't be undone.",
-      confirmLabel: "Yes, delete",
-      onConfirm: () => setTxns((prev) => prev.filter((t) => t.id !== txnId)),
-    });
   }
 
   function handlePrint() {
@@ -819,13 +915,22 @@ function Parties() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <IconButton
-                      title="Message"
-                      colorClass="bg-amber-50 text-amber-600 hover:bg-amber-100"
-                    >
-                      <MessageCircle size={16} />
-                    </IconButton>
+                  {selectedNotes.length > 0 && (
+                    <div className="hidden lg:flex flex-1 min-w-0 max-w-xl flex-col rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 max-h-16 overflow-y-auto">
+                      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        <StickyNote size={11} /> Notes
+                      </span>
+                      <ul className="text-xs text-slate-600 leading-snug">
+                        {selectedNotes.map((n, i) => (
+                          <li key={n._id || i} className="truncate">
+                            {n.content}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 shrink-0">
                     <IconButton
                       title="WhatsApp"
                       colorClass="bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
@@ -838,11 +943,36 @@ function Parties() {
                     >
                       <Clock size={16} />
                     </IconButton>
+                    {selectedNotes.length > 0 && (
+                      <div className="relative lg:hidden group" ref={notesRef}>
+                        <button
+                          type="button"
+                          onClick={() => setNotesOpen((o) => !o)}
+                          title="Notes"
+                          aria-label="Notes"
+                          className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
+                        >
+                          <StickyNote size={16} />
+                        </button>
+                        <div
+                          className={`absolute right-[-80px] top-11 z-30 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg group-hover:block ${notesOpen ? "block" : "hidden"}`}
+                        >
+                          <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                            <StickyNote size={11} /> Notes
+                          </p>
+                          <ul className="space-y-1 text-xs text-slate-600 max-h-40 overflow-y-auto">
+                            {selectedNotes.map((n, i) => (
+                              <li key={n._id || i}>• {n.content}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex-1 flex flex-col p-4 sm:p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center justify-between gap-2 mb-3">
                     <h3 className="text-base font-semibold text-slate-900">
                       Transactions
                     </h3>
@@ -853,7 +983,7 @@ function Parties() {
                           value={txnSearch}
                           onChange={(e) => setTxnSearch(e.target.value)}
                           placeholder="Search number..."
-                          className="text-sm rounded-lg border border-slate-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30 focus:border-[#1E4D96] w-32 sm:w-44"
+                          className="hidden sm:block text-sm rounded-lg border border-slate-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30 focus:border-[#1E4D96] w-44"
                         />
                       )}
                       <HeaderIconButton
@@ -874,12 +1004,25 @@ function Parties() {
                     </div>
                   </div>
 
+                  {/* Full-width search on mobile (keeps the header from wrapping). */}
+                  {txnSearchOpen && (
+                    <input
+                      value={txnSearch}
+                      onChange={(e) => setTxnSearch(e.target.value)}
+                      placeholder="Search number..."
+                      className="sm:hidden w-full mb-3 text-sm rounded-lg border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30 focus:border-[#1E4D96]"
+                    />
+                  )}
+
                   <div className="flex items-center gap-2 mb-4 flex-wrap">
-                    {["All", "Sale", "Purchase", "Payments"].map((f) => (
+                    {["All", "Sale", "Purchase"].map((f) => (
                       <button
                         type="button"
                         key={f}
-                        onClick={() => setTxnFilter(f)}
+                        onClick={() => {
+                          setTxnFilter(f);
+                          setTxnPage(1);
+                        }}
                         className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/40 ${
                           txnFilter === f
                             ? "bg-slate-900 text-white border-slate-900"
@@ -895,116 +1038,124 @@ function Parties() {
                     ))}
                   </div>
 
-                  {filteredTransactions.length === 0 ? (
+                  {txnLoading ? (
+                    <div className="flex-1 flex items-center justify-center py-12 text-slate-400">
+                      <Loader2 size={22} className="animate-spin" />
+                    </div>
+                  ) : txnError ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center py-12 text-rose-500">
+                      <p className="text-sm">{txnError}</p>
+                      <button
+                        type="button"
+                        onClick={fetchTransactions}
+                        className="mt-2 text-[#1E4D96] font-medium hover:underline"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : filteredTransactions.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-center py-12 text-slate-400">
                       <Inbox size={32} className="mb-2" />
                       <p className="text-sm">No transactions found.</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto -mx-4 sm:-mx-5">
-                      <table className="w-full min-w-[640px] text-sm">
-                        <thead>
-                          <tr className="text-left text-xs font-medium text-slate-400 uppercase tracking-wide border-b border-slate-100">
-                            <th className="py-2 px-4 sm:px-5 font-medium">
-                              Type
-                            </th>
-                            <th className="py-2 px-3 font-medium">Number</th>
-                            <th className="py-2 px-3 font-medium">Date</th>
-                            <th className="py-2 px-3 font-medium text-right">
-                              Total
-                            </th>
-                            <th className="py-2 px-3 font-medium text-right">
-                              Balance
-                            </th>
-                            <th className="py-2 px-3 font-medium text-right">
-                              Status
-                            </th>
-                            <th className="py-2 px-4 sm:px-5 w-10"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredTransactions.map((t) => {
-                            const meta =
-                              TYPE_META[t.type] || TYPE_META["Opening Balance"];
-                            const Icon = meta.icon;
-                            const status = getStatus(t);
-                            return (
-                              <tr key={t.id} className="hover:bg-slate-50/70">
-                                <td className="py-3 px-4 sm:px-5">
-                                  <span className="inline-flex items-center gap-1.5">
-                                    <span
-                                      className={`w-6 h-6 rounded-md flex items-center justify-center ${meta.bg} ${meta.color}`}
-                                    >
-                                      <Icon size={13} />
-                                    </span>
-                                    <span className="text-slate-700">
-                                      {t.type}
-                                    </span>
-                                  </span>
-                                </td>
-                                <td className="py-3 px-3 text-slate-500">
-                                  {t.number}
-                                </td>
-                                <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
-                                  {t.date}
-                                </td>
-                                <td className="py-3 px-3 text-right font-medium text-slate-800">
-                                  {formatINR(t.total)}
-                                </td>
-                                <td
-                                  className={`py-3 px-3 text-right font-medium ${
-                                    t.balance > 0
-                                      ? "text-emerald-600"
-                                      : t.balance < 0
-                                        ? "text-rose-600"
-                                        : "text-slate-400"
-                                  }`}
-                                >
-                                  {formatINR(t.balance)}
-                                </td>
-                                <td className="py-3 px-3 text-right">
-                                  <span
-                                    className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}
-                                  >
-                                    {status.label}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-4 sm:px-5 text-right relative">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setOpenMenuTxnId(
-                                        openMenuTxnId === t.id ? null : t.id,
-                                      )
-                                    }
-                                    aria-label="More actions"
-                                    className="text-slate-400 hover:text-slate-600 p-1 rounded hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-                                  >
-                                    <MoreVertical size={16} />
-                                  </button>
-                                  {openMenuTxnId === t.id && (
-                                    <div
-                                      ref={menuRef}
-                                      className="absolute right-4 top-10 z-10 w-32 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-left"
-                                    >
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          requestDeleteTransaction(t.id)
-                                        }
-                                        className="w-full text-left text-sm text-rose-600 hover:bg-rose-50 px-3 py-2 flex items-center gap-2"
+                    <>
+                      <div className="overflow-x-auto -mx-4 sm:-mx-5">
+                        <table className="w-full min-w-[600px] text-sm">
+                          <thead>
+                            <tr className="text-left text-xs font-medium text-slate-400 uppercase tracking-wide border-b border-slate-100">
+                              <th className="py-2 px-4 sm:px-5 font-medium">
+                                Type
+                              </th>
+                              <th className="py-2 px-3 font-medium">Number</th>
+                              <th className="py-2 px-3 font-medium">Date</th>
+                              <th className="py-2 px-3 font-medium text-right">
+                                Total
+                              </th>
+                              <th className="py-2 px-4 sm:px-5 font-medium text-right">
+                                Balance
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredTransactions.map((t) => {
+                              const meta = txnMeta(t.type);
+                              const Icon = meta.icon;
+                              return (
+                                <tr key={t.id} className="hover:bg-slate-50/70">
+                                  <td className="py-3 px-4 sm:px-5">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span
+                                        className={`w-6 h-6 rounded-md flex items-center justify-center ${meta.bg} ${meta.color}`}
                                       >
-                                        <Trash2 size={14} /> Delete
-                                      </button>
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                                        <Icon size={13} />
+                                      </span>
+                                      <span className="text-slate-700">
+                                        {meta.label}
+                                      </span>
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 text-slate-500">
+                                    {t.number}
+                                  </td>
+                                  <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                                    {t.date}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-medium text-slate-800">
+                                    {t.total ? formatINR(t.total) : "—"}
+                                  </td>
+                                  <td
+                                    className={`py-3 px-4 sm:px-5 text-right font-medium ${
+                                      t.balance > 0
+                                        ? "text-emerald-600"
+                                        : t.balance < 0
+                                          ? "text-rose-600"
+                                          : "text-slate-400"
+                                    }`}
+                                  >
+                                    {t.balance ? formatINR(t.balance) : "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {txnTotalPages > 1 && (
+                        <div className="flex items-center justify-between pt-3 mt-1 border-t border-slate-100 text-xs text-slate-500">
+                          <span>
+                            Page {txnPage} of {txnTotalPages}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={txnPage <= 1}
+                              onClick={() =>
+                                setTxnPage((p) => Math.max(1, p - 1))
+                              }
+                              className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                              aria-label="Previous page"
+                            >
+                              <ChevronLeft size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={txnPage >= txnTotalPages}
+                              onClick={() =>
+                                setTxnPage((p) =>
+                                  Math.min(txnTotalPages, p + 1),
+                                )
+                              }
+                              className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                              aria-label="Next page"
+                            >
+                              <ChevronRight size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </>

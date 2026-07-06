@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "react-toastify";
 import {
   Plus,
@@ -8,30 +8,89 @@ import {
   Trash2,
   Layers,
   Boxes,
+  Package,
   Inbox,
+  Loader2,
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import RawMaterialDrawer from "../components/RawMaterialDrawer";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import ConfirmDialog from "../components/ConfirmDialog";
-import { emptyPartyForm, buildPartyPayload } from "../utils/party";
-import { createParty } from "../services/apiServices";
-import { useRawMaterials } from "../context/rawMaterialContext";
+import {
+  emptyPartyForm,
+  buildPartyPayload,
+  todayISO,
+  isoToDMY,
+  dmyToISO,
+} from "../utils/party";
+import {
+  GetParties,
+  createParty,
+  GetPurchases,
+  createPurchase,
+  updatePurchase,
+  DeletePurchase,
+} from "../services/apiServices";
 
-function todayISO() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+const PAGE_SIZE = 10;
 
 function emptySheetForm() {
   return {
-    supplier: "",
+    partyId: "",
+    supplier: "", // supplier display name
+    invoiceNumber: "",
     date: todayISO(),
     size: "",
     point: "",
     grade: "",
     quantity: "",
     error: "",
+    errorFields: [],
+  };
+}
+
+function normalizePurchase(raw) {
+  return {
+    id: raw._id ?? raw.id,
+    partyId:
+      (typeof raw.partyId === "object" ? raw.partyId?._id : raw.partyId) ?? "",
+    supplier: raw.supplierName ?? raw.supplier ?? "",
+    invoiceNumber: raw.invoiceNumber ?? "",
+    date: raw.date ?? "",
+    size: raw.size ?? "",
+    point: raw.point ?? "",
+    grade: raw.grade ?? "",
+    rawMaterialName: raw.rawMaterialName ?? "",
+    quantity: raw.quantity ?? 0,
+  };
+}
+
+// Dig the list + summary + total out of the response envelope.
+function extractPurchases(res) {
+  const body = res?.data ?? {};
+  const d = body.data ?? {};
+  const list = Array.isArray(d) ? d : (d.purchases ?? d.results ?? []);
+  const summary = (Array.isArray(d) ? {} : d.summary) ?? {};
+  const total = body.meta?.pagination?.total ?? (Array.isArray(list) ? list.length : 0);
+  return {
+    list: Array.isArray(list) ? list : [],
+    summary,
+    total: Number(total) || 0,
+  };
+}
+
+function buildPurchasePayload(f) {
+  return {
+    partyId: f.partyId,
+    invoiceNumber: f.invoiceNumber.trim(),
+    date: isoToDMY(f.date),
+    size: String(f.size).trim(),
+    point: String(f.point).trim(),
+    grade: String(f.grade).trim(),
+    quantity: Number(f.quantity) || 0,
   };
 }
 
@@ -51,9 +110,53 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   );
 }
 
+function SortIcon({ active, dir }) {
+  return (
+    <span className="inline-flex flex-col -space-y-[5px] leading-none">
+      <ChevronUp
+        size={12}
+        strokeWidth={2.5}
+        className={active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"}
+      />
+      <ChevronDown
+        size={12}
+        strokeWidth={2.5}
+        className={active && dir === "desc" ? "text-[#1E4D96]" : "text-slate-300"}
+      />
+    </span>
+  );
+}
+
+function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
+  return (
+    <th className={`py-3 px-4 font-semibold ${align === "right" ? "text-right" : ""}`}>
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={`inline-flex items-center gap-1 hover:text-slate-700 ${
+          align === "right" ? "flex-row-reverse" : ""
+        }`}
+      >
+        {label}
+        <SortIcon active={sortBy === field} dir={sortOrder} />
+      </button>
+    </th>
+  );
+}
+
 export default function Purchase() {
-  const { sheets, addSheet, updateSheet, deleteSheet } = useRawMaterials();
+  // Server-driven list state
+  const [purchases, setPurchases] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [listError, setListError] = useState("");
+
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [sortBy, setSortBy] = useState(null);
+  const [sortOrder, setSortOrder] = useState("asc");
+  const [page, setPage] = useState(1);
 
   // Drawer / form state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -62,47 +165,107 @@ export default function Purchase() {
   const [formState, setFormState] = useState(emptySheetForm);
   const [saving, setSaving] = useState(false);
 
-  // Confirmation modal: { title, message, confirmLabel, onConfirm } | null
   const [confirmState, setConfirmState] = useState(null);
+
+  // Suppliers (parties) for the drawer dropdown.
+  const [suppliers, setSuppliers] = useState([]);
 
   // Add-supplier party drawer (reuses the Parties create flow).
   const [partyOpen, setPartyOpen] = useState(false);
   const [partyForm, setPartyForm] = useState(emptyPartyForm);
   const [partySaving, setPartySaving] = useState(false);
-  // Suppliers created via the + button this session (not yet reflected in sheets).
-  const [addedSuppliers, setAddedSuppliers] = useState([]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return sheets;
-    return sheets.filter((s) =>
-      [s.supplier, s.size, s.point, s.grade]
-        .map((v) => String(v ?? "").toLowerCase())
-        .some((v) => v.includes(q)),
-    );
-  }, [sheets, query]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const totalQuantity = useMemo(
-    () => sheets.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0),
-    [sheets],
-  );
+  // Debounce the search box (and reset to page 1).
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(id);
+  }, [query]);
 
-  // Supplier names for the drawer's searchable dropdown: ones already used in
-  // sheets plus any added via the + button this session. (Swap/extend with a
-  // GET /parties fetch once that API is wired.)
-  const supplierOptions = useMemo(() => {
-    const seen = new Set();
-    const list = [];
-    for (const name of [...sheets.map((s) => s.supplier), ...addedSuppliers]) {
-      const clean = (name || "").trim();
-      const key = clean.toLowerCase();
-      if (clean && !seen.has(key)) {
-        seen.add(key);
-        list.push(clean);
+  const fetchPurchases = useCallback(async () => {
+    setLoading(true);
+    setListError("");
+    try {
+      const res = await GetPurchases({
+        search: debouncedQuery,
+        sortBy: sortBy || undefined,
+        sortOrder: sortBy ? sortOrder : undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      const { list, summary: s, total: t } = extractPurchases(res);
+      setPurchases(list.map(normalizePurchase));
+      setSummary(s);
+      setTotal(t);
+    } catch (err) {
+      setPurchases([]);
+      setListError("Couldn't load purchases.");
+      toast.error(err?.response?.data?.message || "Failed to load purchases");
+    } finally {
+      setLoading(false);
+    }
+  }, [debouncedQuery, sortBy, sortOrder, page]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPurchases();
+  }, [fetchPurchases]);
+
+  // Load ALL parties once for the supplier dropdown. The list endpoint caps
+  // `limit` at 100, so page through every page (bounded) and accumulate.
+  useEffect(() => {
+    let alive = true;
+    const partiesOf = (res) => {
+      const d = res?.data?.data ?? res?.data ?? [];
+      return Array.isArray(d) ? d : (d.parties ?? []);
+    };
+    async function loadSuppliers() {
+      try {
+        const first = await GetParties({ page: 1, limit: 100 });
+        const all = [...partiesOf(first)];
+        const totalPages = Math.min(
+          first?.data?.meta?.pagination?.totalPages ?? 1,
+          20,
+        );
+        if (totalPages > 1) {
+          const rest = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              GetParties({ page: i + 2, limit: 100 })
+                .then(partiesOf)
+                .catch(() => []),
+            ),
+          );
+          rest.forEach((arr) => all.push(...arr));
+        }
+        if (alive) {
+          setSuppliers(
+            all
+              .map((p) => ({ id: p._id ?? p.id, name: p.name || "" }))
+              .filter((s) => s.id && s.name),
+          );
+        }
+      } catch {
+        if (alive) toast.error("Couldn't load suppliers");
       }
     }
-    return list.sort((a, b) => a.localeCompare(b));
-  }, [sheets, addedSuppliers]);
+    loadSuppliers();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  function toggleSort(field) {
+    if (sortBy === field) setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
+    else {
+      setSortBy(field);
+      setSortOrder("asc");
+    }
+    setPage(1);
+  }
 
   function openAddDrawer() {
     setMode("add");
@@ -111,54 +274,65 @@ export default function Purchase() {
     setDrawerOpen(true);
   }
 
-  function openEditDrawer(sheet) {
+  function openEditDrawer(p) {
     setMode("edit");
-    setEditingId(sheet.id);
+    setEditingId(p.id);
     setFormState({
-      supplier: sheet.supplier || "",
-      date: sheet.date || todayISO(),
-      size: sheet.size || "",
-      point: sheet.point || "",
-      grade: sheet.grade || "",
-      quantity: sheet.quantity ?? "",
+      partyId: p.partyId || "",
+      supplier: p.supplier || "",
+      invoiceNumber: p.invoiceNumber || "",
+      date: p.date ? dmyToISO(p.date) : todayISO(),
+      size: p.size || "",
+      point: p.point || "",
+      grade: p.grade || "",
+      quantity: p.quantity ?? "",
       error: "",
+      errorFields: [],
     });
     setDrawerOpen(true);
   }
 
-  function handleSave(e) {
+  async function handleSave(e) {
     e.preventDefault();
-    if (!formState.supplier.trim()) return; // drawer surfaces the field error
+    if (!formState.partyId) return; // drawer surfaces the field errors
     setSaving(true);
-    const sheet = {
-      supplier: formState.supplier.trim(),
-      date: formState.date,
-      size: formState.size.trim(),
-      point: formState.point.trim(),
-      grade: formState.grade.trim(),
-      quantity: formState.quantity === "" ? "" : String(formState.quantity),
-    };
-    if (mode === "add") {
-      addSheet(sheet);
-      toast.success("Sheet added");
-    } else {
-      updateSheet(editingId, sheet);
-      toast.success("Sheet updated");
+    try {
+      const payload = buildPurchasePayload(formState);
+      if (mode === "add") {
+        await createPurchase(payload);
+        toast.success("Purchase added");
+        setPage(1);
+      } else {
+        await updatePurchase(editingId, payload);
+        toast.success("Purchase updated");
+      }
+      await fetchPurchases();
+      setDrawerOpen(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't save purchase");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setDrawerOpen(false);
   }
 
-  function requestDelete(sheet) {
+  function requestDelete(p) {
     setConfirmState({
-      title: "Delete sheet?",
-      message: `Delete the raw material sheet from "${sheet.supplier}"? This can't be undone.`,
+      title: "Delete purchase?",
+      message: `Delete invoice "${p.invoiceNumber}" from "${p.supplier}"? This can't be undone.`,
       confirmLabel: "Yes, delete",
-      onConfirm: () => {
-        deleteSheet(sheet.id);
-        toast.success("Sheet deleted");
-      },
+      onConfirm: () => doDelete(p),
     });
+  }
+
+  async function doDelete(p) {
+    try {
+      await DeletePurchase(p.id);
+      toast.success("Purchase deleted");
+      if (purchases.length === 1 && page > 1) setPage((n) => n - 1);
+      else fetchPurchases();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't delete purchase");
+    }
   }
 
   // Open the party drawer to create a new supplier, carrying over whatever the
@@ -168,16 +342,24 @@ export default function Purchase() {
     setPartyOpen(true);
   }
 
-  // Create a real party, then select it as the supplier on the sheet form.
+  // Create a real party, then select it as the supplier on the purchase form.
   async function handleSaveSupplier(e) {
     e.preventDefault();
     const name = partyForm.name.trim();
     if (!name) return; // party drawer surfaces the required-name error
     setPartySaving(true);
     try {
-      await createParty(buildPartyPayload(partyForm));
-      setAddedSuppliers((prev) => [...prev, name]);
-      setFormState((f) => ({ ...f, supplier: name, error: "" }));
+      const res = await createParty(buildPartyPayload(partyForm));
+      const created = res?.data?.data ?? {};
+      const newId = created._id ?? created.id ?? "";
+      setSuppliers((prev) => [{ id: newId, name }, ...prev]);
+      setFormState((f) => ({
+        ...f,
+        supplier: name,
+        partyId: newId,
+        error: "",
+        errorFields: [],
+      }));
       toast.success("Supplier added");
       setPartyOpen(false);
     } catch (err) {
@@ -186,6 +368,8 @@ export default function Purchase() {
       setPartySaving(false);
     }
   }
+
+  const sortProps = { sortBy, sortOrder, onSort: toggleSort };
 
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
@@ -197,7 +381,7 @@ export default function Purchase() {
               Raw Material
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              Record incoming raw material (Patta) sheets from your suppliers
+              Record incoming raw material (Patta) purchases from your suppliers
               and keep track of stock by size, point and grade.
             </p>
           </div>
@@ -207,35 +391,40 @@ export default function Purchase() {
             className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
           >
             <Plus size={18} strokeWidth={2.5} />
-            Add Raw Material
+            Add Purchase
           </button>
         </div>
 
         {/* Stats strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <StatCard
             icon={Layers}
             iconBg="bg-blue-50"
             iconColor="text-blue-600"
-            label="Total Sheets"
-            value={String(sheets.length)}
+            label="Total Purchases"
+            value={String(total)}
           />
           <StatCard
             icon={Boxes}
             iconBg="bg-emerald-50"
             iconColor="text-emerald-600"
             label="Total Quantity"
-            value={totalQuantity.toLocaleString("en-IN")}
+            value={Number(summary.totalQuantity || 0).toLocaleString("en-IN")}
+          />
+          <StatCard
+            icon={Package}
+            iconBg="bg-purple-50"
+            iconColor="text-purple-600"
+            label="Sheet Types"
+            value={String(summary.totalSheetTypes ?? 0)}
           />
         </div>
 
         {/* List panel */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
-            <h2 className="text-base font-semibold text-slate-900">
-              Sheets List
-            </h2>
-            <div className="relative w-full sm:w-72">
+            <h2 className="text-base font-semibold text-slate-900">Purchases</h2>
+            <div className="relative w-full sm:w-80">
               <Search
                 size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -243,7 +432,7 @@ export default function Purchase() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search supplier, size, point, grade"
+                placeholder="Search supplier, invoice, grade, size…"
                 className="w-full pl-9 pr-8 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30 focus:border-[#1E4D96] transition-colors"
               />
               {query && (
@@ -259,87 +448,141 @@ export default function Purchase() {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <Loader2 size={22} className="animate-spin" />
+            </div>
+          ) : listError ? (
+            <div className="flex flex-col items-center justify-center text-center py-16 text-rose-500">
+              <p className="text-sm">{listError}</p>
+              <button
+                type="button"
+                onClick={fetchPurchases}
+                className="mt-2 text-[#1E4D96] font-medium hover:underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : purchases.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-16 text-slate-400">
               <Inbox size={32} className="mb-2" />
               <p className="text-sm">
-                {sheets.length === 0
-                  ? "No sheets yet. Add your first raw material sheet."
-                  : "No sheets match your search."}
+                {debouncedQuery
+                  ? "No purchases match your search."
+                  : "No purchases yet. Add your first one."}
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
-                <thead>
-                  <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
-                    <th className="py-3 px-4 font-semibold">ID</th>
-                    <th className="py-3 px-4 font-semibold">Supplier</th>
-                    <th className="py-3 px-4 font-semibold">Date</th>
-                    <th className="py-3 px-4 font-semibold">Size</th>
-                    <th className="py-3 px-4 font-semibold">Point</th>
-                    <th className="py-3 px-4 font-semibold">Grade</th>
-                    <th className="py-3 px-4 font-semibold">
-                      Raw Material Name
-                    </th>
-                    <th className="py-3 px-4 font-semibold text-right">Qty</th>
-                    <th className="py-3 px-4 font-semibold text-right w-24">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filtered.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50/70">
-                      <td className="py-3 px-4 text-slate-400">{s.id}</td>
-                      <td className="py-3 px-4 font-medium text-slate-800">
-                        {s.supplier}
-                      </td>
-                      <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
-                        {s.date}
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        {s.size || "—"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        {s.point || "—"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        {s.grade || "—"}
-                      </td>
-                      <td className="py-3 px-4 w-44 text-slate-600">
-                        10 *120p M5
-                      </td>
-                      <td className="py-3 px-4 text-right font-medium text-slate-800">
-                        {s.quantity === "" ? "—" : s.quantity}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openEditDrawer(s)}
-                            aria-label={`Edit sheet from ${s.supplier}`}
-                            title="Edit"
-                            className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => requestDelete(s)}
-                            aria-label={`Delete sheet from ${s.supplier}`}
-                            title="Delete"
-                            className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[820px] text-sm">
+                  <thead>
+                    <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
+                      <SortHeader label="Invoice #" field="invoiceNumber" {...sortProps} />
+                      <th className="py-3 px-4 font-semibold">Supplier</th>
+                      <SortHeader label="Date" field="date" {...sortProps} />
+                      <SortHeader label="Size" field="size" {...sortProps} />
+                      <SortHeader label="Point" field="point" {...sortProps} />
+                      <SortHeader label="Grade" field="grade" {...sortProps} />
+                      <SortHeader
+                        label="Raw Material"
+                        field="rawMaterialName"
+                        {...sortProps}
+                      />
+                      <SortHeader
+                        label="Qty"
+                        field="quantity"
+                        align="right"
+                        {...sortProps}
+                      />
+                      <th className="py-3 px-4 font-semibold text-right w-24">
+                        Actions
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {purchases.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-50/70">
+                        <td className="py-3 px-4 font-medium text-slate-700">
+                          {p.invoiceNumber || "—"}
+                        </td>
+                        <td className="py-3 px-4 font-medium text-slate-800">
+                          {p.supplier || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                          {p.date || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">
+                          {p.size || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">
+                          {p.point || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">
+                          {p.grade || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                          {p.rawMaterialName || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-right font-medium text-slate-800">
+                          {Number(p.quantity || 0).toLocaleString("en-IN")}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openEditDrawer(p)}
+                              aria-label={`Edit purchase ${p.invoiceNumber}`}
+                              title="Edit"
+                              className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => requestDelete(p)}
+                              aria-label={`Delete purchase ${p.invoiceNumber}`}
+                              title="Delete"
+                              className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+                  <span>
+                    Page {page} of {totalPages}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={page <= 1}
+                      onClick={() => setPage((n) => Math.max(1, n - 1))}
+                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
+                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -350,14 +593,14 @@ export default function Purchase() {
         formState={formState}
         setFormState={setFormState}
         saving={saving}
-        supplierOptions={supplierOptions}
+        supplierOptions={suppliers}
         closeOnEscape={!partyOpen}
         onAddSupplier={openAddSupplier}
         onClose={() => setDrawerOpen(false)}
         onSubmit={handleSave}
       />
 
-      {/* Add-supplier drawer, stacked above the raw-material drawer. */}
+      {/* Add-supplier drawer, stacked above the purchase drawer. */}
       <AddPartyDrawer
         open={partyOpen}
         mode="add"
