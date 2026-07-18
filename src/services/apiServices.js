@@ -113,3 +113,80 @@ export const GetRawMaterials = ({
   const q = qs.toString();
   return GET(`/raw-materials${q ? `?${q}` : ""}`);
 };
+
+/* ------------------------------- Productions ------------------------------- */
+
+export const GetProductions = ({
+  search,
+  sortBy,
+  sortOrder,
+  page,
+  limit,
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (search) qs.append("search", search);
+  if (sortBy) qs.append("sortBy", sortBy);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/productions${q ? `?${q}` : ""}`);
+};
+
+export const getProductionById = (id) => {
+  return GET(`/productions/${id}`);
+};
+
+export const createProduction = (data) => {
+  return POST(`/productions`, data);
+};
+
+export const updateProduction = (id, data) => {
+  return PUT(`/productions/${id}`, data);
+};
+
+export const DeleteProduction = (id) => {
+  return DELETE(`/productions/${id}`);
+};
+
+/* -------------------------- Product / by-product inv ----------------------- */
+
+// Product inventory (grouped by product name).
+export const GetProducts = ({
+  search,
+  status,
+  sortBy,
+  sortOrder,
+  page,
+  limit,
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (search) qs.append("search", search);
+  if (status && status !== "all") qs.append("status", status);
+  if (sortBy) qs.append("sortBy", sortBy);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/products${q ? `?${q}` : ""}`);
+};
+
+// By-product inventory (grouped by slug).
+export const GetByProducts = ({
+  search,
+  status,
+  sortBy,
+  sortOrder,
+  page,
+  limit,
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (search) qs.append("search", search);
+  if (status && status !== "all") qs.append("status", status);
+  if (sortBy) qs.append("sortBy", sortBy);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/by-products${q ? `?${q}` : ""}`);
+};

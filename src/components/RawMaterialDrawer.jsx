@@ -1,13 +1,15 @@
 import { useEffect, useRef } from "react";
 import { X, Plus, Check } from "lucide-react";
 import SearchableSelect from "./SearchableSelect";
+import InfoTip from "./InfoTip";
 
-function Field({ label, required, children }) {
+function Field({ label, required, info, children }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+      <span className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-slate-600">
         {label}
-        {required && <span className="ml-0.5 text-rose-500">*</span>}
+        {required && <span className="text-rose-500">*</span>}
+        {info && <InfoTip text={info} />}
       </span>
       {children}
     </label>
@@ -16,6 +18,9 @@ function Field({ label, required, children }) {
 
 // Required fields (matches the create/update API contract).
 const REQUIRED = ["supplier", "invoiceNumber", "date", "size", "point", "grade", "quantity"];
+
+// Size / point / grade allow letters and numbers only (no special characters).
+const alnum = (v) => v.replace(/[^a-zA-Z0-9]/g, "");
 
 /**
  * RawMaterialDrawer
@@ -217,7 +222,7 @@ export default function RawMaterialDrawer({
               <Field label="Size" required>
                 <input
                   value={formState.size}
-                  onChange={(e) => update("size", e.target.value)}
+                  onChange={(e) => update("size", alnum(e.target.value))}
                   placeholder="e.g. 10"
                   className={fieldClass("size")}
                 />
@@ -225,7 +230,7 @@ export default function RawMaterialDrawer({
               <Field label="Point" required>
                 <input
                   value={formState.point}
-                  onChange={(e) => update("point", e.target.value)}
+                  onChange={(e) => update("point", alnum(e.target.value))}
                   placeholder="e.g. 120p"
                   className={fieldClass("point")}
                 />
@@ -236,19 +241,19 @@ export default function RawMaterialDrawer({
               <Field label="Grade" required>
                 <input
                   value={formState.grade}
-                  onChange={(e) => update("grade", e.target.value)}
+                  onChange={(e) => update("grade", alnum(e.target.value))}
                   placeholder="e.g. M5"
                   className={fieldClass("grade")}
                 />
               </Field>
-              <Field label="Quantity" required>
+              <Field label="Quantity" required info="Enter the value in kg only.">
                 <input
                   type="number"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   min="0"
                   value={formState.quantity}
                   onChange={(e) => update("quantity", e.target.value)}
-                  placeholder="e.g. 250"
+                  placeholder="e.g. 250 (kg)"
                   className={fieldClass("quantity")}
                 />
               </Field>

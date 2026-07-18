@@ -15,8 +15,14 @@ const NAV_SECTIONS = [
     section: "Transactions",
     items: [
       { label: "Purchase", icon: CartIcon, path: "/purchase" },
-      { label: "Items", icon: BoxIcon, path: "/items" },
-      { label: "Inventory", icon: InventoryIcon, path: "/inventory" },
+      {
+        label: "Production",
+        icon: BoxIcon,
+        children: [
+          { label: "Raw Material", path: "/inventory" },
+          { label: "Product", path: "/product" },
+        ],
+      },
       { label: "Sales", icon: ReceiptIcon, badge: 3, path: "/sales" },
     ],
   },
@@ -33,7 +39,7 @@ const NAV_SECTIONS = [
 const PAGE_SUBTITLES = {
   "/dashboard": "Good morning, Raj — here's your business at a glance",
   "/parties": "All your customers and suppliers in one place",
-  "/items": "Manage your product catalog and stock",
+  "/product": "Cut products from sheets and track product & byproduct stock",
   "/sales": "Track invoices and payments received",
   "/purchase": "Track purchase bills and payments made",
   "/inventory": "Raw material stock on hand by specification",
@@ -43,8 +49,11 @@ const PAGE_SUBTITLES = {
 
 function getActiveLabel(pathname) {
   for (const { items } of NAV_SECTIONS) {
-    const match = items.find((i) => i.path === pathname);
-    if (match) return match.label;
+    for (const item of items) {
+      if (item.path === pathname) return item.label;
+      const child = item.children?.find((c) => c.path === pathname);
+      if (child) return child.label;
+    }
   }
   return "Dashboard";
 }
@@ -56,6 +65,19 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const userMenuRef = useRef(null);
+
+  // Expandable nav groups (open the one whose child matches the current path).
+  const [openMenus, setOpenMenus] = useState(() => {
+    const open = {};
+    NAV_SECTIONS.forEach((s) =>
+      s.items.forEach((it) => {
+        if (it.children?.some((c) => c.path === location.pathname)) {
+          open[it.label] = true;
+        }
+      }),
+    );
+    return open;
+  });
 
   // Logged-in user — merged from the stored user object and the JWT claims.
   const user = useMemo(() => getDisplayUser(), []);
@@ -159,7 +181,77 @@ export default function Layout() {
               ) : (
                 <div className="h-3" />
               )}
-              {items.map(({ label, icon: Icon, badge, path }) => {
+              {items.map((item) => {
+                const { label, icon: Icon, badge, path, children } = item;
+
+                // Expandable group (e.g. Production -> Raw Material, Product).
+                if (children) {
+                  const childActive = children.some(
+                    (c) => c.path === location.pathname,
+                  );
+                  const isOpen = !!openMenus[label];
+                  return (
+                    <div key={label}>
+                      <button
+                        onClick={() =>
+                          collapsed
+                            ? handleNav(children[0].path)
+                            : setOpenMenus((m) => ({ ...m, [label]: !m[label] }))
+                        }
+                        title={collapsed ? label : undefined}
+                        className={[
+                          "w-full flex items-center rounded-lg text-[15px] font-medium transition-colors duration-100 mb-0.5",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 px-3 py-2.5",
+                          childActive
+                            ? "text-white"
+                            : "text-blue-200/70 hover:bg-white/[0.07] hover:text-blue-200",
+                        ].join(" ")}
+                      >
+                        <span className="w-[18px] h-[18px] flex-shrink-0">
+                          <Icon />
+                        </span>
+                        {!collapsed && (
+                          <>
+                            <span className="flex-1 text-left whitespace-nowrap">
+                              {label}
+                            </span>
+                            <span
+                              className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
+                            >
+                              <CaretIcon />
+                            </span>
+                          </>
+                        )}
+                      </button>
+                      {!collapsed && isOpen && (
+                        <div className="ml-5 mb-1 border-l border-white/10 pl-2">
+                          {children.map((c) => {
+                            const active = location.pathname === c.path;
+                            return (
+                              <button
+                                key={c.label}
+                                onClick={() => handleNav(c.path)}
+                                className={[
+                                  "w-full flex items-center rounded-lg text-[14px] font-medium px-3 py-2 mb-0.5 transition-colors",
+                                  active
+                                    ? "bg-[#1E4D96] text-white"
+                                    : "text-blue-200/60 hover:bg-white/[0.07] hover:text-blue-200",
+                                ].join(" ")}
+                              >
+                                <span className="flex-1 text-left whitespace-nowrap">
+                                  {c.label}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 const active = location.pathname === path;
                 return (
                   <button
@@ -419,18 +511,17 @@ function CartIcon() {
     </svg>
   );
 }
-function InventoryIcon() {
+function CaretIcon() {
   return (
     <svg
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.6"
-      width="18"
-      height="18"
+      strokeWidth="2"
+      width="12"
+      height="12"
     >
-      <path d="M2 6.5L10 3l8 3.5-8 3.5-8-3.5z" />
-      <path d="M2 10l8 3.5L18 10M2 13.5L10 17l8-3.5" />
+      <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

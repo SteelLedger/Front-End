@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   Plus,
   Search,
@@ -14,7 +13,9 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import AddPurchase from "../components/AddPurchase";
 import { GetRawMaterials } from "../services/apiServices";
+import { gmToKgDisplay } from "../utils/units";
 
 const PAGE_SIZE = 10;
 
@@ -70,12 +71,16 @@ function SortIcon({ active, dir }) {
       <ChevronUp
         size={12}
         strokeWidth={2.5}
-        className={active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"}
+        className={
+          active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
       />
       <ChevronDown
         size={12}
         strokeWidth={2.5}
-        className={active && dir === "desc" ? "text-[#1E4D96]" : "text-slate-300"}
+        className={
+          active && dir === "desc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
       />
     </span>
   );
@@ -109,7 +114,7 @@ function SortHeader({
 }
 
 export default function Inventory() {
-  const navigate = useNavigate();
+  const [addOpen, setAddOpen] = useState(false);
 
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({});
@@ -189,11 +194,11 @@ export default function Inventory() {
           </div>
           <button
             type="button"
-            onClick={() => navigate("/purchase")}
+            onClick={() => setAddOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
           >
             <Plus size={18} strokeWidth={2.5} />
-            Add Raw Material
+            Add Purchase
           </button>
         </div>
 
@@ -203,8 +208,8 @@ export default function Inventory() {
             icon={Boxes}
             iconBg="bg-blue-50"
             iconColor="text-blue-600"
-            label="Total Quantity"
-            value={Number(summary.totalQuantity || 0).toLocaleString("en-IN")}
+            label="Total Quantity (kg)"
+            value={gmToKgDisplay(summary.totalQuantity || 0)}
           />
           <StatCard
             icon={PackageCheck}
@@ -304,7 +309,9 @@ export default function Inventory() {
                         <td className="py-3 px-4 font-medium text-slate-800 whitespace-nowrap">
                           {dash(g.rawMaterialName)}
                         </td>
-                        <td className="py-3 px-4 text-slate-600">{dash(g.size)}</td>
+                        <td className="py-3 px-4 text-slate-600">
+                          {dash(g.size)}
+                        </td>
                         <td className="py-3 px-4 text-slate-600">
                           {dash(g.point)}
                         </td>
@@ -312,7 +319,7 @@ export default function Inventory() {
                           {dash(g.grade)}
                         </td>
                         <td className="py-3 px-4 font-semibold text-slate-900">
-                          {g.totalQty.toLocaleString("en-IN")}
+                          {gmToKgDisplay(g.totalQty)} kg
                         </td>
                         <td className="py-3 px-4">
                           <span
@@ -322,7 +329,9 @@ export default function Inventory() {
                                 : "bg-rose-50 text-rose-700"
                             }`}
                           >
-                            {g.status === "in_stock" ? "In stock" : "Out of stock"}
+                            {g.status === "in_stock"
+                              ? "In stock"
+                              : "Out of stock"}
                           </span>
                         </td>
                       </tr>
@@ -349,7 +358,9 @@ export default function Inventory() {
                     <button
                       type="button"
                       disabled={page >= totalPages}
-                      onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
+                      onClick={() =>
+                        setPage((n) => Math.min(totalPages, n + 1))
+                      }
                       className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Next page"
                     >
@@ -362,6 +373,12 @@ export default function Inventory() {
           )}
         </div>
       </div>
+
+      <AddPurchase
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={fetchRawMaterials}
+      />
     </div>
   );
 }

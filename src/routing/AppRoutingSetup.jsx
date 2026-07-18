@@ -10,7 +10,7 @@ import Dashboard from "../pages/Dashboard";
 import Parties from "../pages/Parties";
 import Purchase from "../pages/Purchase";
 import Inventory from "../pages/Inventory";
-import Items from "../pages/Items";
+import Product from "../pages/Product";
 import ComingSoon from "../pages/ComingSoon";
 import NotFound from "../pages/NotFound";
 
@@ -44,21 +44,26 @@ const router = createBrowserRouter([
             element: <Parties />,
           },
           {
-            path: "/items",
-            element: <Items />,
+            path: "/product",
+            element: <Product />,
           },
-          // Modules not built yet — placeholders so QA doesn't hit blank screens.
           {
-            path: "/sales",
-            element: <ComingSoon title="Sales" />,
+            path: "/inventory",
+            element: <Inventory />,
+          },
+          // Redirect the old Items path to the new Product page.
+          {
+            path: "/items",
+            element: <Navigate to="/product" replace />,
           },
           {
             path: "/purchase",
             element: <Purchase />,
           },
+          // Modules not built yet — placeholders so QA doesn't hit blank screens.
           {
-            path: "/inventory",
-            element: <Inventory />,
+            path: "/sales",
+            element: <ComingSoon title="Sales" />,
           },
           {
             path: "/reports",

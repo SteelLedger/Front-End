@@ -26,6 +26,7 @@ import {
   isoToDMY,
   dmyToISO,
 } from "../utils/party";
+import { kgToGm, gmToKg, gmToKgDisplay } from "../utils/units";
 import {
   GetParties,
   createParty,
@@ -90,7 +91,7 @@ function buildPurchasePayload(f) {
     size: String(f.size).trim(),
     point: String(f.point).trim(),
     grade: String(f.grade).trim(),
-    quantity: Number(f.quantity) || 0,
+    quantity: kgToGm(f.quantity), // UI kg -> backend grams
   };
 }
 
@@ -282,10 +283,11 @@ export default function Purchase() {
       supplier: p.supplier || "",
       invoiceNumber: p.invoiceNumber || "",
       date: p.date ? dmyToISO(p.date) : todayISO(),
+      // stored grams -> kg for the input
       size: p.size || "",
       point: p.point || "",
       grade: p.grade || "",
-      quantity: p.quantity ?? "",
+      quantity: p.quantity != null ? gmToKg(p.quantity) : "",
       error: "",
       errorFields: [],
     });
@@ -408,8 +410,8 @@ export default function Purchase() {
             icon={Boxes}
             iconBg="bg-emerald-50"
             iconColor="text-emerald-600"
-            label="Total Quantity"
-            value={Number(summary.totalQuantity || 0).toLocaleString("en-IN")}
+            label="Total Quantity (kg)"
+            value={gmToKgDisplay(summary.totalQuantity || 0)}
           />
           <StatCard
             icon={Package}
@@ -525,7 +527,7 @@ export default function Purchase() {
                           {p.rawMaterialName || "—"}
                         </td>
                         <td className="py-3 px-4 text-right font-medium text-slate-800">
-                          {Number(p.quantity || 0).toLocaleString("en-IN")}
+                          {gmToKgDisplay(p.quantity || 0)} kg
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center justify-end gap-1">

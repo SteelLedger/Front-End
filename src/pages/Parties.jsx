@@ -6,7 +6,6 @@ import {
   FileSpreadsheet,
   Plus,
   Pencil,
-  MessageCircle,
   Phone,
   Clock,
   X,
