@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { getDisplayUser } from "../utils/auth";
+import { clearSession, getDisplayUser } from "../utils/auth";
 
 // ── Nav ───────────────────────────────────────────────────────────
 const NAV_SECTIONS = [
@@ -104,8 +104,7 @@ export default function Layout() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearSession();
     navigate("/login", { replace: true });
   };
 

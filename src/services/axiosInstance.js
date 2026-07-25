@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clearSession } from "../utils/auth";
 
 // === Create Axios instance ===
 const axiosInstance = axios.create({
@@ -24,8 +25,7 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error?.response?.status === 401) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+      clearSession();
       if (!window.location.pathname.startsWith("/login")) {
         window.location.assign("/login");
       }

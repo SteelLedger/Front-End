@@ -17,6 +17,35 @@ export function decodeToken(token) {
   }
 }
 
+// When the token stops being valid, in ms since epoch — or null if the token
+// carries no `exp` claim (JWT `exp` is in seconds).
+export function getTokenExpiry(token) {
+  const exp = decodeToken(token)?.exp;
+  return typeof exp === "number" ? exp * 1000 : null;
+}
+
+// Treat a token as dead slightly before its real expiry, so a browser clock
+// running fast doesn't let a doomed request through.
+export const CLOCK_SKEW_MS = 5000;
+
+/**
+ * Has the token expired?
+ * A token with no `exp` claim is treated as NOT expired — we can't tell from
+ * here, so let the API be the judge (the 401 interceptor still catches it).
+ */
+export function isTokenExpired(token, skewMs = CLOCK_SKEW_MS) {
+  if (!token) return true;
+  const expiresAt = getTokenExpiry(token);
+  if (expiresAt == null) return false;
+  return Date.now() >= expiresAt - skewMs;
+}
+
+// Drop the stored session. Safe to call repeatedly.
+export function clearSession() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+}
+
 // Initials from a name ("Raj Kumar" -> "RK") or email ("admin@x.com" -> "AD").
 export function getInitials(value) {
   if (!value) return "U";
