@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { X, Plus, Trash2, Check } from "lucide-react";
 import InfoTip from "./InfoTip";
 import { gmToKg, gmToKgDisplay } from "../utils/units";
+import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
 
 const FIELD =
   "w-full rounded-md border px-3 py-2.5 text-sm text-slate-700 " +
@@ -10,14 +11,6 @@ const ROW_FIELD =
   "rounded-md border border-slate-300 px-3 py-2.5 text-sm text-slate-700 " +
   "placeholder:text-slate-400 focus:outline-none focus:ring-1 " +
   "focus:border-[#1E4D96] focus:ring-[#1E4D96]/30";
-
-const BYPRODUCT_OPTIONS = [
-  "Khuniya",
-  "Lafa",
-  "Scrap",
-  "Tukda",
-  "Different size patta",
-];
 
 function Field({ label, required, info, children }) {
   return (
@@ -95,7 +88,9 @@ export default function ProductionDrawer({
   const sheetKg = selectedSheet ? gmToKg(selectedSheet.totalQtyGm) : 0;
 
   const maxSize =
-    selectedSheet && selectedSheet.size !== "" && !Number.isNaN(Number(selectedSheet.size))
+    selectedSheet &&
+    selectedSheet.size !== "" &&
+    !Number.isNaN(Number(selectedSheet.size))
       ? Number(selectedSheet.size) + 1
       : null;
   const sizeNum = Number(formState.productSize);
@@ -192,7 +187,9 @@ export default function ProductionDrawer({
             </Field>
             {selectedSheet && (
               <div className="mt-1.5 flex items-center gap-1 text-xs text-slate-500">
-                <span className="font-medium text-slate-600">Sheet Weight:</span>
+                <span className="font-medium text-slate-600">
+                  Sheet Weight:
+                </span>
                 <span className="font-semibold text-slate-800">
                   {gmToKgDisplay(selectedSheet.totalQtyGm)} kg
                 </span>
@@ -207,9 +204,7 @@ export default function ProductionDrawer({
               <input
                 value={formState.productSize}
                 onChange={(e) => set({ productSize: e.target.value })}
-                placeholder={
-                  maxSize != null ? `Max ${maxSize}` : "e.g. 101"
-                }
+                placeholder={maxSize != null ? `Max ${maxSize}` : "e.g. 101"}
                 className={`${FIELD} ${
                   sizeInvalid
                     ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
@@ -224,7 +219,8 @@ export default function ProductionDrawer({
             ) : (
               selectedSheet && (
                 <p className="mt-1 text-xs text-slate-400">
-                  Sheet size {selectedSheet.size} — product size up to {maxSize}.
+                  Sheet size {selectedSheet.size} — product size up to {maxSize}
+                  .
                 </p>
               )
             )}
@@ -232,11 +228,7 @@ export default function ProductionDrawer({
 
           {/* How many + difference */}
           <div className="grid grid-cols-2 gap-4">
-            <Field
-              label="How Many Products"
-              required
-              info="Enter the quantity in kg."
-            >
+            <Field label="Products (In kg)" required>
               <input
                 type="number"
                 inputMode="decimal"
@@ -247,7 +239,7 @@ export default function ProductionDrawer({
                 className={`${FIELD} border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30`}
               />
             </Field>
-            <Field label="Difference" info="Waste / unaccounted, in kg.">
+            <Field label="Difference (In kg)" info="Waste / unaccounted.">
               <input
                 type="number"
                 inputMode="decimal"
@@ -265,6 +257,7 @@ export default function ProductionDrawer({
             <input
               type="date"
               value={formState.productionDate}
+              max={new Date().toISOString().split("T")[0]}
               onChange={(e) => set({ productionDate: e.target.value })}
               className={`${FIELD} border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30`}
             />

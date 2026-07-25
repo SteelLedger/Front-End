@@ -192,14 +192,14 @@ export default function Inventory() {
               and grade. Stock is built from purchases.
             </p>
           </div>
-          <button
+          {/* <button
             type="button"
             onClick={() => setAddOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
           >
             <Plus size={18} strokeWidth={2.5} />
             Add Purchase
-          </button>
+          </button> */}
         </div>
 
         {/* Stats strip */}

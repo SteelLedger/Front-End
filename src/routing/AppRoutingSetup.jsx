@@ -11,6 +11,7 @@ import Parties from "../pages/Parties";
 import Purchase from "../pages/Purchase";
 import Inventory from "../pages/Inventory";
 import Product from "../pages/Product";
+import ProductInventory from "../pages/ProductInventory";
 import ComingSoon from "../pages/ComingSoon";
 import NotFound from "../pages/NotFound";
 
@@ -46,6 +47,10 @@ const router = createBrowserRouter([
           {
             path: "/product",
             element: <Product />,
+          },
+          {
+            path: "/product-inventory",
+            element: <ProductInventory />,
           },
           {
             path: "/inventory",

@@ -1,0 +1,494 @@
+import { useState, useEffect, useCallback } from "react";
+import { toast } from "react-toastify";
+import {
+  Search,
+  X,
+  Inbox,
+  Loader2,
+  Eye,
+  Pencil,
+  Trash2,
+  Package,
+  Boxes,
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import ConfirmDialog from "./ConfirmDialog";
+import {
+  GetProductions,
+  DeleteProduction,
+  getProductionById,
+} from "../services/apiServices";
+import { gmToKgDisplay } from "../utils/units";
+
+const PAGE_SIZE = 10;
+
+function normalizeProduction(raw) {
+  return {
+    id: raw._id ?? raw.id,
+    productName: raw.productName || "—",
+    rawMaterialName: raw.rawMaterialName || "—",
+    productSize: raw.productSize || "—",
+    productQtyGm: raw.productQty ?? 0,
+    wasteQtyGm: raw.wasteQty ?? 0,
+    productionDate: raw.productionDate || "",
+    byProducts: Array.isArray(raw.byProducts) ? raw.byProducts : [],
+  };
+}
+
+function extractProductions(res) {
+  const body = res?.data ?? {};
+  const d = body.data ?? {};
+  const list = Array.isArray(d) ? d : (d.productions ?? []);
+  const summary = (Array.isArray(d) ? {} : d.summary) ?? {};
+  const total =
+    body.meta?.pagination?.total ?? (Array.isArray(list) ? list.length : 0);
+  return {
+    list: Array.isArray(list) ? list : [],
+    summary,
+    total: Number(total) || 0,
+  };
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return "—";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(dt.getUTCDate())}/${pad(dt.getUTCMonth() + 1)}/${dt.getUTCFullYear()}`;
+}
+
+function SortIcon({ active, dir }) {
+  return (
+    <span className="inline-flex flex-col -space-y-[5px] leading-none">
+      <ChevronUp
+        size={12}
+        strokeWidth={2.5}
+        className={
+          active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
+      />
+      <ChevronDown
+        size={12}
+        strokeWidth={2.5}
+        className={
+          active && dir === "desc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
+      />
+    </span>
+  );
+}
+
+function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
+  return (
+    <th
+      className={`py-3 px-4 font-semibold ${align === "right" ? "text-right" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={`inline-flex items-center gap-1 hover:text-slate-700 ${align === "right" ? "flex-row-reverse" : ""}`}
+      >
+        {label}
+        <SortIcon active={sortBy === field} dir={sortOrder} />
+      </button>
+    </th>
+  );
+}
+
+function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+      <span
+        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
+      >
+        <Icon size={18} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs text-slate-400">{label}</p>
+        <p className="text-lg font-semibold truncate text-slate-900">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ProductionRecords
+ * Server-driven list of production records (GET /productions) with edit/delete.
+ * `onEdit(id)` opens the parent's drawer in edit mode; `reloadKey` triggers a
+ * refetch after an external add/edit.
+ */
+export default function ProductionRecords({ onEdit, reloadKey }) {
+  const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [sortBy, setSortBy] = useState(null);
+  const [sortOrder, setSortOrder] = useState("asc");
+  const [page, setPage] = useState(1);
+
+  const [confirmState, setConfirmState] = useState(null);
+  // Byproducts viewer: { loading, productName, byProducts } | null
+  const [viewState, setViewState] = useState(null);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  async function openView(row) {
+    setViewState({
+      loading: true,
+      productName: row.productName,
+      byProducts: [],
+    });
+    try {
+      const res = await getProductionById(row.id);
+      const d = res?.data?.data ?? res?.data ?? {};
+      setViewState({
+        loading: false,
+        productName: d.productName || row.productName,
+        byProducts: Array.isArray(d.byProducts) ? d.byProducts : [],
+      });
+    } catch {
+      setViewState({
+        loading: false,
+        productName: row.productName,
+        byProducts: [],
+      });
+    }
+  }
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setDebounced(query.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await GetProductions({
+        search: debounced,
+        sortBy: sortBy || undefined,
+        sortOrder: sortBy ? sortOrder : undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      const { list, summary: s, total: t } = extractProductions(res);
+      setRows(list.map(normalizeProduction));
+      setSummary(s);
+      setTotal(t);
+    } catch {
+      setRows([]);
+      setError("Couldn't load productions.");
+    } finally {
+      setLoading(false);
+    }
+  }, [debounced, sortBy, sortOrder, page]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load, reloadKey]);
+
+  function toggleSort(field) {
+    if (!field) return;
+    if (sortBy === field) setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
+    else {
+      setSortBy(field);
+      setSortOrder("asc");
+    }
+    setPage(1);
+  }
+
+  function requestDelete(row) {
+    setConfirmState({
+      title: "Delete production?",
+      message: `Delete "${row.productName}"? This restores the deducted raw material stock and can't be undone.`,
+      confirmLabel: "Yes, delete",
+      onConfirm: () => doDelete(row),
+    });
+  }
+
+  async function doDelete(row) {
+    try {
+      await DeleteProduction(row.id);
+      toast.success("Production deleted");
+      if (rows.length === 1 && page > 1) setPage((p) => p - 1);
+      else load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't delete production");
+    }
+  }
+
+  const sortProps = { sortBy, sortOrder, onSort: toggleSort };
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3 mb-4 sm:max-w-md">
+        <StatCard
+          icon={Boxes}
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
+          label="Total Qty (kg)"
+          value={gmToKgDisplay(summary.totalQuantity || 0)}
+        />
+        <StatCard
+          icon={Package}
+          iconBg="bg-violet-50"
+          iconColor="text-violet-600"
+          label="Product Types"
+          value={String(summary.totalProductTypes ?? 0)}
+        />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
+          <h2 className="text-base font-semibold text-slate-900">
+            Production Records
+          </h2>
+          <div className="relative w-full sm:w-72">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search product, size, raw material"
+              className="w-full pl-9 pr-8 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30 focus:border-[#1E4D96] transition-colors"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-slate-400">
+            <Loader2 size={22} className="animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center text-center py-16 text-rose-500">
+            <p className="text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={load}
+              className="mt-2 text-[#1E4D96] font-medium hover:underline"
+            >
+              Retry
+            </button>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center py-16 text-slate-400">
+            <Inbox size={32} className="mb-2" />
+            <p className="text-sm">
+              {debounced
+                ? "No productions match your search."
+                : "No productions yet. Click Add Product to cut your first one."}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
+                    <SortHeader
+                      label="Product"
+                      field="productName"
+                      {...sortProps}
+                    />
+                    <th className="py-3 px-4 font-semibold">Raw Material</th>
+                    <SortHeader
+                      label="Size"
+                      field="productSize"
+                      {...sortProps}
+                    />
+                    <SortHeader
+                      label="Product Qty"
+                      field="productQty"
+                      {...sortProps}
+                    />
+                    <th className="py-3 px-4 font-semibold">Waste</th>
+                    <SortHeader
+                      label="Date"
+                      field="productionDate"
+                      {...sortProps}
+                    />
+                    <th className="py-3 px-4 font-semibold text-right w-28">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {rows.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50/70 align-top">
+                      <td className="py-3 px-4 font-medium text-slate-800 whitespace-nowrap">
+                        {r.productName}
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                        {r.rawMaterialName}
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">
+                        {r.productSize}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-900 whitespace-nowrap">
+                        {gmToKgDisplay(r.productQtyGm)} kg
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                        {gmToKgDisplay(r.wasteQtyGm)} kg
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                        {fmtDate(r.productionDate)}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openView(r)}
+                            aria-label="View byproducts"
+                            title="View byproducts"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onEdit(r.id)}
+                            aria-label="Edit production"
+                            title="Edit"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => requestDelete(r)}
+                            aria-label="Delete production"
+                            title="Delete"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+                <span>
+                  Page {page} of {totalPages}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((n) => Math.max(1, n - 1))}
+                    className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
+                    className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title}
+        message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel}
+        onCancel={() => setConfirmState(null)}
+        onConfirm={() => {
+          const fn = confirmState?.onConfirm;
+          setConfirmState(null);
+          fn?.();
+        }}
+      />
+
+      {/* Byproducts viewer */}
+      {viewState && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/40"
+            onClick={() => setViewState(null)}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-slate-900">
+                Byproducts
+              </h3>
+              <button
+                type="button"
+                onClick={() => setViewState(null)}
+                aria-label="Close"
+                className="rounded text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-balck">
+              Product Name : {viewState.productName}
+            </p>
+            {viewState.loading ? (
+              <div className="flex justify-center py-6 text-slate-400">
+                <Loader2 size={20} className="animate-spin" />
+              </div>
+            ) : viewState.byProducts.length === 0 ? (
+              <p className="py-2 text-sm text-slate-500">
+                No byproducts for this product.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {viewState.byProducts.map((b, i) => (
+                  <li
+                    key={b._id || i}
+                    className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+                  >
+                    <span className="text-sm text-slate-700">
+                      {b.byProductName}
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900">
+                      {gmToKgDisplay(b.qty)} kg
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

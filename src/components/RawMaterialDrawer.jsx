@@ -17,7 +17,15 @@ function Field({ label, required, info, children }) {
 }
 
 // Required fields (matches the create/update API contract).
-const REQUIRED = ["supplier", "invoiceNumber", "date", "size", "point", "grade", "quantity"];
+const REQUIRED = [
+  "supplier",
+  "invoiceNumber",
+  "date",
+  "size",
+  "point",
+  "grade",
+  "quantity",
+];
 
 // Size / point / grade allow letters and numbers only (no special characters).
 const alnum = (v) => v.replace(/[^a-zA-Z0-9]/g, "");
@@ -213,6 +221,7 @@ export default function RawMaterialDrawer({
               <input
                 type="date"
                 value={formState.date}
+                max={new Date().toISOString().split("T")[0]}
                 onChange={(e) => update("date", e.target.value)}
                 className={fieldClass("date")}
               />
@@ -246,7 +255,7 @@ export default function RawMaterialDrawer({
                   className={fieldClass("grade")}
                 />
               </Field>
-              <Field label="Quantity" required info="Enter the value in kg only.">
+              <Field label="Quantity (In kg)" required>
                 <input
                   type="number"
                   inputMode="decimal"

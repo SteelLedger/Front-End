@@ -4,6 +4,7 @@ import {
   X,
   Inbox,
   Loader2,
+  Eye,
   ChevronUp,
   ChevronDown,
   ChevronLeft,
@@ -64,6 +65,7 @@ export default function InventoryTab({
   statCards,
   searchPlaceholder = "Search…",
   reloadKey,
+  onView,
 }) {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
@@ -232,6 +234,11 @@ export default function InventoryTab({
                         )}
                       </th>
                     ))}
+                    {onView && (
+                      <th className="py-3 px-4 font-semibold text-right w-24">
+                        Actions
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -242,6 +249,21 @@ export default function InventoryTab({
                           {col.render(row)}
                         </td>
                       ))}
+                      {onView && (
+                        <td className="py-3 px-4">
+                          <div className="flex items-center justify-end">
+                            <button
+                              type="button"
+                              onClick={() => onView(row)}
+                              aria-label="View byproducts"
+                              title="View byproducts"
+                              className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
+                            >
+                              <Eye size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

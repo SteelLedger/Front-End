@@ -15,12 +15,13 @@ const NAV_SECTIONS = [
     section: "Transactions",
     items: [
       { label: "Purchase", icon: CartIcon, path: "/purchase" },
+      { label: "Product", icon: CartIcon, path: "/product" },
       {
-        label: "Production",
+        label: "Inventory",
         icon: BoxIcon,
         children: [
           { label: "Raw Material", path: "/inventory" },
-          { label: "Product", path: "/product" },
+          { label: "Product", path: "/product-inventory" },
         ],
       },
       { label: "Sales", icon: ReceiptIcon, badge: 3, path: "/sales" },
@@ -39,7 +40,8 @@ const NAV_SECTIONS = [
 const PAGE_SUBTITLES = {
   "/dashboard": "Good morning, Raj — here's your business at a glance",
   "/parties": "All your customers and suppliers in one place",
-  "/product": "Cut products from sheets and track product & byproduct stock",
+  "/product": "Cut products from sheets and track production & byproduct stock",
+  "/product-inventory": "Product stock on hand by product name",
   "/sales": "Track invoices and payments received",
   "/purchase": "Track purchase bills and payments made",
   "/inventory": "Raw material stock on hand by specification",
@@ -171,7 +173,7 @@ export default function Layout() {
         )}
 
         {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar px-2 py-2">
           {NAV_SECTIONS.map(({ section, items }) => (
             <div key={section}>
               {!collapsed ? (
@@ -196,7 +198,10 @@ export default function Layout() {
                         onClick={() =>
                           collapsed
                             ? handleNav(children[0].path)
-                            : setOpenMenus((m) => ({ ...m, [label]: !m[label] }))
+                            : setOpenMenus((m) => ({
+                                ...m,
+                                [label]: !m[label],
+                              }))
                         }
                         title={collapsed ? label : undefined}
                         className={[

@@ -2,14 +2,17 @@ import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import { Plus, Boxes, Package, PackageCheck, PackageX } from "lucide-react";
 import ProductionDrawer from "../components/ProductionDrawer";
+import ProductionRecords from "../components/ProductionRecords";
 import InventoryTab from "../components/InventoryTab";
 import { todayISO } from "../utils/party";
-import { kgToGm, gmToKgDisplay } from "../utils/units";
+import { kgToGm, gmToKg, gmToKgDisplay } from "../utils/units";
+import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
 import {
   GetRawMaterials,
-  GetProducts,
   GetByProducts,
   createProduction,
+  updateProduction,
+  getProductionById,
 } from "../services/apiServices";
 
 /* ------------------------------- form helpers ------------------------------ */
@@ -32,10 +35,44 @@ function dateToISO(d) {
   const dt = new Date(`${d}T00:00:00.000Z`);
   return Number.isNaN(dt.getTime()) ? new Date().toISOString() : dt.toISOString();
 }
+function isoToDateInput(iso) {
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return todayISO();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
+}
+
+function byproductToForm(bp) {
+  const known = BYPRODUCT_OPTIONS.includes(bp.byProductName);
+  return {
+    _id: bp._id,
+    name: known ? bp.byProductName : "Other",
+    customName: known ? "" : bp.byProductName || "",
+    qty: bp.qty != null ? gmToKg(bp.qty) : "",
+  };
+}
+
+// Map a production record (GET /productions/:id) back into the drawer form.
+function productionToForm(d) {
+  const rmId =
+    typeof d.rawMaterialId === "object" ? d.rawMaterialId?._id : d.rawMaterialId;
+  return {
+    rawMaterialId: rmId ?? "",
+    productSize: d.productSize ?? "",
+    howMany: d.productQty != null ? gmToKg(d.productQty) : "",
+    difference: d.wasteQty != null ? gmToKg(d.wasteQty) : "",
+    productionDate: d.productionDate ? isoToDateInput(d.productionDate) : todayISO(),
+    byproducts:
+      Array.isArray(d.byProducts) && d.byProducts.length
+        ? d.byProducts.map(byproductToForm)
+        : [emptyByproduct()],
+  };
+}
 
 function buildProductionPayload(form) {
   const byProducts = (form.byproducts || [])
     .map((b) => ({
+      ...(b._id ? { _id: b._id } : {}),
       byProductName:
         b.name === "Other" ? (b.customName || "").trim() : b.name,
       qty: kgToGm(b.qty),
@@ -51,7 +88,7 @@ function buildProductionPayload(form) {
   };
 }
 
-/* --------------------------- inventory tab configs ------------------------- */
+/* ------------------------- by-product inventory config --------------------- */
 
 function statusBadge(status) {
   return (
@@ -67,33 +104,20 @@ function statusBadge(status) {
   );
 }
 
-function extractInv(key) {
-  return (res) => {
-    const body = res?.data ?? {};
-    const d = body.data ?? {};
-    const list = Array.isArray(d) ? d : (d[key] ?? []);
-    const summary = (Array.isArray(d) ? {} : d.summary) ?? {};
-    const total =
-      body.meta?.pagination?.total ??
-      (Array.isArray(list) ? list.length : 0);
-    return {
-      list: Array.isArray(list) ? list : [],
-      summary,
-      total: Number(total) || 0,
-    };
+function extractByProducts(res) {
+  const body = res?.data ?? {};
+  const d = body.data ?? {};
+  const list = Array.isArray(d) ? d : (d.byProducts ?? []);
+  const summary = (Array.isArray(d) ? {} : d.summary) ?? {};
+  const total =
+    body.meta?.pagination?.total ?? (Array.isArray(list) ? list.length : 0);
+  return {
+    list: Array.isArray(list) ? list : [],
+    summary,
+    total: Number(total) || 0,
   };
 }
-const extractProducts = extractInv("products");
-const extractByProducts = extractInv("byProducts");
 
-const normalizeProduct = (raw) => ({
-  id: raw.productName,
-  productName: raw.productName || "—",
-  productSize: raw.productSize || "—",
-  rawMaterialName: raw.rawMaterialName || "—",
-  totalQtyGm: raw.totalQty ?? 0,
-  status: raw.status || (Number(raw.totalQty) > 0 ? "in_stock" : "out_of_stock"),
-});
 const normalizeByProduct = (raw) => ({
   id: raw.slug,
   byProductName: raw.byProductName || "—",
@@ -101,30 +125,6 @@ const normalizeByProduct = (raw) => ({
   totalQtyGm: raw.totalQty ?? 0,
   status: raw.status || (Number(raw.totalQty) > 0 ? "in_stock" : "out_of_stock"),
 });
-
-const qtyCell = (r) => (
-  <span className="font-semibold text-slate-900">
-    {gmToKgDisplay(r.totalQtyGm)} kg
-  </span>
-);
-
-const PRODUCT_COLUMNS = [
-  {
-    label: "Product",
-    sortField: "productName",
-    render: (r) => (
-      <span className="font-medium text-slate-800">{r.productName}</span>
-    ),
-  },
-  { label: "Product Size", sortField: "productSize", render: (r) => r.productSize },
-  {
-    label: "Raw Material",
-    sortField: "rawMaterialName",
-    render: (r) => r.rawMaterialName,
-  },
-  { label: "Total Qty", sortField: "totalQty", render: qtyCell },
-  { label: "Status", sortField: null, render: (r) => statusBadge(r.status) },
-];
 
 const BYPRODUCT_COLUMNS = [
   {
@@ -135,39 +135,16 @@ const BYPRODUCT_COLUMNS = [
     ),
   },
   { label: "Slug", sortField: "slug", render: (r) => r.slug },
-  { label: "Total Qty", sortField: "totalQty", render: qtyCell },
+  {
+    label: "Total Qty",
+    sortField: "totalQty",
+    render: (r) => (
+      <span className="font-semibold text-slate-900">
+        {gmToKgDisplay(r.totalQtyGm)} kg
+      </span>
+    ),
+  },
   { label: "Status", sortField: null, render: (r) => statusBadge(r.status) },
-];
-
-const productStats = (s) => [
-  {
-    icon: Boxes,
-    iconBg: "bg-blue-50",
-    iconColor: "text-blue-600",
-    label: "Total Qty (kg)",
-    value: gmToKgDisplay(s.totalQuantity || 0),
-  },
-  {
-    icon: Package,
-    iconBg: "bg-violet-50",
-    iconColor: "text-violet-600",
-    label: "Product Types",
-    value: String(s.totalProductTypes ?? 0),
-  },
-  {
-    icon: PackageCheck,
-    iconBg: "bg-emerald-50",
-    iconColor: "text-emerald-600",
-    label: "In Stock",
-    value: String(s.inStockCount ?? 0),
-  },
-  {
-    icon: PackageX,
-    iconBg: "bg-rose-50",
-    iconColor: "text-rose-600",
-    label: "Out of Stock",
-    value: String(s.outOfStockCount ?? 0),
-  },
 ];
 
 const byproductStats = (s) => [
@@ -223,6 +200,8 @@ export default function Product() {
   const [tab, setTab] = useState("items");
   const [sheets, setSheets] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mode, setMode] = useState("add");
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyProductionForm);
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -279,19 +258,40 @@ export default function Product() {
   }, []);
 
   function openAdd() {
+    setMode("add");
+    setEditingId(null);
     setForm(emptyProductionForm());
     setDrawerOpen(true);
+  }
+
+  async function openEdit(id) {
+    try {
+      const res = await getProductionById(id);
+      const d = res?.data?.data ?? res?.data ?? {};
+      setForm(productionToForm(d));
+      setMode("edit");
+      setEditingId(id);
+      setDrawerOpen(true);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't load production");
+    }
   }
 
   async function handleSave() {
     setSaving(true);
     try {
-      await createProduction(buildProductionPayload(form));
-      toast.success("Product added");
+      const payload = buildProductionPayload(form);
+      if (mode === "add") {
+        await createProduction(payload);
+        toast.success("Product added");
+      } else {
+        await updateProduction(editingId, payload);
+        toast.success("Production updated");
+      }
       setDrawerOpen(false);
       setReloadKey((k) => k + 1);
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Couldn't add product");
+      toast.error(err?.response?.data?.message || "Couldn't save production");
     } finally {
       setSaving(false);
     }
@@ -307,8 +307,7 @@ export default function Product() {
               Product
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              Cut products from raw material sheets and track product &amp;
-              byproduct stock.
+              Cut products from raw material sheets and track byproduct stock.
             </p>
           </div>
           <button
@@ -335,15 +334,7 @@ export default function Product() {
         </div>
 
         {tab === "items" ? (
-          <InventoryTab
-            fetchFn={GetProducts}
-            extract={extractProducts}
-            normalize={normalizeProduct}
-            columns={PRODUCT_COLUMNS}
-            statCards={productStats}
-            searchPlaceholder="Search product, size, raw material"
-            reloadKey={reloadKey}
-          />
+          <ProductionRecords onEdit={openEdit} reloadKey={reloadKey} />
         ) : (
           <InventoryTab
             fetchFn={GetByProducts}
@@ -359,7 +350,7 @@ export default function Product() {
 
       <ProductionDrawer
         open={drawerOpen}
-        mode="add"
+        mode={mode}
         formState={form}
         setFormState={setForm}
         sheets={sheets}
