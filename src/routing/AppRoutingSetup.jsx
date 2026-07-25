@@ -9,6 +9,7 @@ import Layout from "../layouts/Layout";
 import Dashboard from "../pages/Dashboard";
 import Parties from "../pages/Parties";
 import Purchase from "../pages/Purchase";
+import Sales from "../pages/Sales";
 import Inventory from "../pages/Inventory";
 import Product from "../pages/Product";
 import ProductInventory from "../pages/ProductInventory";
@@ -65,11 +66,11 @@ const router = createBrowserRouter([
             path: "/purchase",
             element: <Purchase />,
           },
-          // Modules not built yet — placeholders so QA doesn't hit blank screens.
           {
             path: "/sales",
-            element: <ComingSoon title="Sales" />,
+            element: <Sales />,
           },
+          // Modules not built yet — placeholders so QA doesn't hit blank screens.
           {
             path: "/reports",
             element: <ComingSoon title="Reports" />,

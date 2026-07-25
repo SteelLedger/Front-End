@@ -382,7 +382,10 @@ export default function Layout() {
               <BellIcon />
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
             </button>
-            <button className="flex items-center gap-1.5 bg-[#1E4D96] hover:bg-[#1A3F7A] text-white text-[14px] font-semibold px-3 py-2 rounded-lg transition-colors">
+            <button
+              onClick={() => handleNav("/sales")}
+              className="flex items-center gap-1.5 bg-[#1E4D96] hover:bg-[#1A3F7A] text-white text-[14px] font-semibold px-3 py-2 rounded-lg transition-colors"
+            >
               <PlusIcon />
               <span className="hidden sm:inline">New Sale</span>
             </button>
