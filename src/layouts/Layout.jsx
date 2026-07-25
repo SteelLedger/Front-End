@@ -15,7 +15,7 @@ const NAV_SECTIONS = [
     section: "Transactions",
     items: [
       { label: "Purchase", icon: CartIcon, path: "/purchase" },
-      { label: "Product", icon: CartIcon, path: "/product" },
+      { label: "Production", icon: CartIcon, path: "/product" },
       {
         label: "Inventory",
         icon: BoxIcon,
