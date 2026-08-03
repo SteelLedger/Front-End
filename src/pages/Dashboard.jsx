@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import {
   BarChart,
   Bar,
@@ -10,490 +11,432 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import {
+  TrendingUp,
+  ShoppingCart,
+  Scissors,
+  Trash2,
+  Layers,
+  Wallet,
+  AlertTriangle,
+  ArrowRight,
+  FlaskConical,
+} from "lucide-react";
+import { gmToKgDisplay } from "../utils/units";
+import { paymentTypeLabel } from "../utils/sales";
+import {
+  IS_MOCK,
+  SUMMARY,
+  MATERIAL_FLOW,
+  YIELD_BREAKDOWN,
+  RECENT_SALES,
+  STOCK_ALERTS,
+  TOP_PRODUCTS,
+} from "../utils/dashboardMock";
 
-// ── Data ─────────────────────────────────────────────────────────
-const salesPurchaseData = [
-  { month: "Jan", sales: 520, purchase: 310 },
-  { month: "Feb", sales: 610, purchase: 380 },
-  { month: "Mar", sales: 490, purchase: 290 },
-  { month: "Apr", sales: 720, purchase: 460 },
-  { month: "May", sales: 680, purchase: 410 },
-  { month: "Jun", sales: 842, purchase: 518 },
-];
+const formatINR = (n) => `₹ ${(Number(n) || 0).toLocaleString("en-IN")}`;
+const kg = (grams) => `${gmToKgDisplay(grams)} kg`;
 
-const partyData = [
-  { name: "Mehta Traders", value: 28 },
-  { name: "Patel Enterprises", value: 22 },
-  { name: "Kumar & Co", value: 18 },
-  { name: "Sharma Pvt Ltd", value: 17 },
-  { name: "Others", value: 15 },
-];
-const PIE_COLORS = ["#1E4D96", "#2563C4", "#4A80D8", "#A3BEF0", "#DBEAFE"];
+/* -------------------------------- pieces ---------------------------------- */
 
-const recentSales = [
-  {
-    party: "Mehta Traders",
-    invoice: "INV-2024",
-    items: 3,
-    amount: "₹42,500",
-    status: "Paid",
-  },
-  {
-    party: "Patel Enterprises",
-    invoice: "INV-2023",
-    items: 5,
-    amount: "₹28,200",
-    status: "Pending",
-  },
-  {
-    party: "Kumar & Co",
-    invoice: "INV-2022",
-    items: 2,
-    amount: "₹15,800",
-    status: "Paid",
-  },
-  {
-    party: "Sharma Pvt Ltd",
-    invoice: "INV-2021",
-    items: 7,
-    amount: "₹63,100",
-    status: "Overdue",
-  },
-];
+function KpiCard({ icon: Icon, label, value, sub, tone, to }) {
+  return (
+    <Link
+      to={to}
+      className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-[#BBD0EC] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium leading-tight text-slate-500">
+          {label}
+        </p>
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone}`}
+        >
+          <Icon size={16} />
+        </span>
+      </div>
+      <p className="mt-2 text-xl font-bold leading-tight tracking-tight text-slate-900">
+        {value}
+      </p>
+      <p className="mt-1 flex items-center gap-1 text-xs text-slate-400">
+        {sub}
+        <ArrowRight
+          size={12}
+          className="opacity-0 transition-opacity group-hover:opacity-100"
+        />
+      </p>
+    </Link>
+  );
+}
 
-const lowStockItems = [
-  { name: "USB-C Hub Pro", qty: 3 },
-  { name: "Wireless Keyboard", qty: 5 },
-  { name: "Monitor Stand XL", qty: 2 },
-  { name: "HDMI Cable 2m", qty: 8 },
-  { name: "Laptop Stand Pro", qty: 4 },
-];
+function Panel({ title, action, to, children, className = "" }) {
+  return (
+    <div
+      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:p-5 ${className}`}
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+        {action && (
+          <Link
+            to={to}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-[#1E4D96] hover:underline"
+          >
+            {action} <ArrowRight size={13} />
+          </Link>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
 
-// ── Metric config ─────────────────────────────────────────────────
-const METRICS = [
-  {
-    label: "Total Sales",
-    value: "₹8,42,500",
-    trend: "+12.4%",
-    trendUp: true,
-    sub: "vs last month",
-    Icon: TrendingUpIcon,
-    accentBg: "bg-blue-50",
-    accentText: "text-blue-700",
-    valueClass: "text-slate-900",
-  },
-  {
-    label: "Total Purchase",
-    value: "₹5,18,200",
-    trend: "+6.1%",
-    trendUp: true,
-    sub: "vs last month",
-    Icon: CartIcon,
-    accentBg: "bg-green-100",
-    accentText: "text-green-700",
-    valueClass: "text-slate-900",
-  },
-  {
-    label: "Stock Value",
-    value: "₹12,65,000",
-    trend: "-2.3%",
-    trendUp: false,
-    sub: "this week",
-    Icon: BoxIcon,
-    accentBg: "bg-purple-100",
-    accentText: "text-purple-700",
-    valueClass: "text-slate-900",
-  },
-  {
-    label: "Profit / Loss",
-    value: "₹3,24,300",
-    trend: "+18.7%",
-    trendUp: true,
-    sub: "vs last month",
-    Icon: CashIcon,
-    accentBg: "bg-green-100",
-    accentText: "text-green-700",
-    valueClass: "text-green-700",
-  },
-  {
-    label: "Pending Payments",
-    value: "₹1,08,400",
-    trend: null,
-    trendUp: null,
-    sub: "From 7 parties",
-    Icon: ClockIcon,
-    accentBg: "bg-amber-100",
-    accentText: "text-amber-700",
-    valueClass: "text-amber-700",
-  },
-  {
-    label: "Low Stock Alerts",
-    value: "5 Items",
-    trend: null,
-    trendUp: null,
-    sub: "Need immediate reorder",
-    Icon: AlertIcon,
-    accentBg: "bg-red-100",
-    accentText: "text-red-600",
-    valueClass: "text-red-600",
-  },
-];
-
-const STATUS_CLASS = {
-  Paid: "bg-green-100 text-green-800",
-  Pending: "bg-amber-100 text-amber-800",
-  Overdue: "bg-red-100 text-red-700",
-};
-
-// ── Custom tooltip ────────────────────────────────────────────────
-const BarTooltip = ({ active, payload, label }) => {
+function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs shadow-md">
-      <p className="font-bold text-slate-800 mb-1">{label}</p>
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
+      {label && <p className="mb-1 font-bold text-slate-800">{label}</p>}
       {payload.map((p) => (
-        <p key={p.name} className="mb-0.5" style={{ color: p.fill }}>
-          {p.name}: ₹{p.value.toLocaleString("en-IN")}k
+        <p key={p.name} className="mb-0.5" style={{ color: p.fill ?? p.color }}>
+          {p.name}: {kg(p.value)}
         </p>
       ))}
     </div>
   );
-};
+}
 
-// ── Dashboard ─────────────────────────────────────────────────────
+/* ---------------------------------- page ---------------------------------- */
+
 export default function Dashboard() {
+  const { sales, purchases, production, rawMaterial, parties } = SUMMARY;
+
+  const yieldTotal = YIELD_BREAKDOWN.reduce((sum, d) => sum + d.value, 0);
+  const wastePct = yieldTotal
+    ? ((production.wasteQty / yieldTotal) * 100).toFixed(1)
+    : "0";
+  const topMax = Math.max(...TOP_PRODUCTS.map((p) => p.quantity), 1);
+
+  const kpis = [
+    {
+      icon: TrendingUp,
+      label: "Sold this month",
+      value: kg(sales.totalQuantity),
+      sub: `${sales.invoiceCount} invoices`,
+      tone: "bg-blue-50 text-blue-600",
+      to: "/sales",
+    },
+    {
+      icon: ShoppingCart,
+      label: "Purchased this month",
+      value: kg(purchases.totalQuantity),
+      sub: `${purchases.billCount} bills`,
+      tone: "bg-emerald-50 text-emerald-600",
+      to: "/purchase",
+    },
+    {
+      icon: Scissors,
+      label: "Produced this month",
+      value: kg(production.productQty),
+      sub: `${production.runCount} production runs`,
+      tone: "bg-violet-50 text-violet-600",
+      to: "/product",
+    },
+    {
+      icon: Trash2,
+      label: "Waste this month",
+      value: kg(production.wasteQty),
+      sub: `${wastePct}% of material cut`,
+      tone: "bg-amber-50 text-amber-600",
+      to: "/product",
+    },
+    {
+      icon: Layers,
+      label: "Raw material in stock",
+      value: kg(rawMaterial.totalQuantity),
+      sub: `${rawMaterial.totalTypes} sheet types`,
+      tone: "bg-sky-50 text-sky-600",
+      to: "/inventory",
+    },
+    {
+      icon: Wallet,
+      label: "To receive",
+      value: formatINR(parties.toReceive),
+      sub: `from ${parties.receivableCount} parties`,
+      tone: "bg-rose-50 text-rose-600",
+      to: "/parties",
+    },
+  ];
+
   return (
-    <div className="p-4 lg:p-6 space-y-4 lg:space-y-5">
-      {/* Metric cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-        {METRICS.map(
-          ({
-            label,
-            value,
-            trend,
-            trendUp,
-            sub,
-            Icon,
-            accentBg,
-            accentText,
-            valueClass,
-          }) => (
-            <div
-              key={label}
-              className="bg-white rounded-xl border border-slate-200 p-4 relative overflow-hidden"
-            >
-              <p className="text-[12px] text-slate-500 font-medium mb-1.5 pr-9 leading-tight">
-                {label}
-              </p>
-              <p
-                className={`text-[19px] font-bold tracking-tight leading-tight ${valueClass}`}
-              >
-                {value}
-              </p>
-              <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                {trend && (
-                  <span
-                    className={`text-[11px] font-semibold ${trendUp ? "text-green-600" : "text-red-500"}`}
-                  >
-                    {trend}
-                  </span>
-                )}
-                <span className="text-[11px] text-slate-400">{sub}</span>
-              </div>
-              <div
-                className={`absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center ${accentBg} ${accentText}`}
-              >
-                <span className="w-4 h-4">
-                  <Icon />
-                </span>
-              </div>
-            </div>
-          ),
-        )}
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Bar chart */}
-        <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-4 lg:p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[15px] font-bold text-[#0A1628]">
-              Sales vs Purchase
-            </h2>
-            <span className="text-[12px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
-              Last 6 months
-            </span>
+    <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5">
+      <div className="mx-auto max-w-[1400px] space-y-4 lg:space-y-5">
+        {/* Header */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Material moving through the business — bought, cut, sold, and
+              what's left.
+            </p>
           </div>
-          <div className="flex gap-4 mb-3">
-            <span className="flex items-center gap-1.5 text-[12px] text-slate-500">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[#1E4D96]" />
-              Sales
+          {IS_MOCK && (
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+              <FlaskConical size={13} />
+              Sample data — dashboard APIs in progress
             </span>
-            <span className="flex items-center gap-1.5 text-[12px] text-slate-500">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[#5DCAA5]" />
-              Purchase
-            </span>
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={salesPurchaseData} barCategoryGap="30%" barGap={4}>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="rgba(0,0,0,0.05)"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="month"
-                tick={{ fontSize: 12, fill: "#94a3b8" }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v) => `₹${v}k`}
-              />
-              <Tooltip
-                content={<BarTooltip />}
-                cursor={{ fill: "rgba(0,0,0,0.03)" }}
-              />
-              <Bar
-                dataKey="sales"
-                name="Sales"
-                fill="#1E4D96"
-                radius={[4, 4, 0, 0]}
-              />
-              <Bar
-                dataKey="purchase"
-                name="Purchase"
-                fill="#5DCAA5"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          )}
         </div>
 
-        {/* Donut chart */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4 lg:p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[15px] font-bold text-[#0A1628]">
-              Party-wise Sales
-            </h2>
-            <span className="text-[12px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
-              Top 5
-            </span>
-          </div>
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart>
-              <Pie
-                data={partyData}
-                cx="50%"
-                cy="50%"
-                innerRadius={45}
-                outerRadius={72}
-                dataKey="value"
-                paddingAngle={3}
-              >
-                {partyData.map((_, i) => (
-                  <Cell key={i} fill={PIE_COLORS[i]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v, n) => [`${v}%`, n]} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-3">
-            {partyData.map((p, i) => (
-              <span
-                key={p.name}
-                className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate"
-              >
-                <span
-                  className="w-2 h-2 rounded-sm flex-shrink-0"
-                  style={{ background: PIE_COLORS[i] }}
-                />
-                <span className="truncate">
-                  {p.name.split(" ")[0]} {p.value}%
-                </span>
-              </span>
-            ))}
-          </div>
+        {/* KPIs */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          {kpis.map((k) => (
+            <KpiCard key={k.label} {...k} />
+          ))}
         </div>
-      </div>
 
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-4">
-        {/* Recent sales */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 lg:p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[15px] font-bold text-[#0A1628]">
-              Recent Sales
-            </h2>
-            <button className="text-[12px] text-[#1E4D96] font-semibold hover:underline">
-              View all →
-            </button>
-          </div>
-          {recentSales.map((s) => (
-            <div
-              key={s.invoice}
-              className="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0"
-            >
-              <div className="min-w-0 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-[12px] font-bold text-[#1E4D96] flex-shrink-0">
-                  {s.party.charAt(0)}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[14px] font-semibold text-[#0A1628] truncate">
-                    {s.party}
-                  </p>
-                  <p className="text-[12px] text-slate-400 mt-0.5">
-                    {s.invoice} · {s.items} items
-                  </p>
-                </div>
-              </div>
-              <div className="text-right ml-3 flex-shrink-0">
-                <p className="text-[15px] font-bold text-[#0A1628]">
-                  {s.amount}
-                </p>
+        {/* Charts */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <Panel
+            title="Material flow (kg)"
+            action="Purchases"
+            to="/purchase"
+            className="lg:col-span-3"
+          >
+            <div className="mb-3 flex flex-wrap gap-4">
+              {[
+                ["Purchased", "#5DCAA5"],
+                ["Produced", "#1E4D96"],
+                ["Sold", "#4A80D8"],
+              ].map(([name, color]) => (
                 <span
-                  className={`inline-block text-[11px] px-2 py-0.5 rounded-full font-semibold mt-0.5 ${STATUS_CLASS[s.status]}`}
+                  key={name}
+                  className="flex items-center gap-1.5 text-xs text-slate-500"
                 >
-                  {s.status}
+                  <span
+                    className="h-2.5 w-2.5 rounded-sm"
+                    style={{ background: color }}
+                  />
+                  {name}
                 </span>
+              ))}
+            </div>
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={MATERIAL_FLOW} barCategoryGap="28%" barGap={3}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="rgba(0,0,0,0.05)"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 12, fill: "#94a3b8" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v) => (v / 1000).toLocaleString("en-IN")}
+                />
+                <Tooltip
+                  content={<ChartTooltip />}
+                  cursor={{ fill: "rgba(0,0,0,0.03)" }}
+                />
+                {/* Animation off: recharts draws shapes via requestAnimationFrame,
+                    which browsers suspend in hidden/throttled tabs — that leaves
+                    the chart blank. Rendering final geometry immediately is also
+                    the right call for a dashboard. */}
+                <Bar
+                  dataKey="purchased"
+                  name="Purchased"
+                  fill="#5DCAA5"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                />
+                <Bar
+                  dataKey="produced"
+                  name="Produced"
+                  fill="#1E4D96"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                />
+                <Bar
+                  dataKey="sold"
+                  name="Sold"
+                  fill="#4A80D8"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </Panel>
+
+          <Panel
+            title="Production yield"
+            action="Production"
+            to="/product"
+            className="lg:col-span-2"
+          >
+            <div className="relative">
+              <ResponsiveContainer width="100%" height={185}>
+                <PieChart>
+                  <Pie
+                    data={YIELD_BREAKDOWN}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={54}
+                    outerRadius={80}
+                    dataKey="value"
+                    paddingAngle={3}
+                    isAnimationActive={false}
+                  >
+                    {YIELD_BREAKDOWN.map((d) => (
+                      <Cell key={d.name} fill={d.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<ChartTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-lg font-bold text-slate-900">
+                  {gmToKgDisplay(yieldTotal)}
+                </span>
+                <span className="text-xs text-slate-400">kg cut</span>
               </div>
             </div>
-          ))}
+            <div className="mt-3 space-y-1.5">
+              {YIELD_BREAKDOWN.map((d) => (
+                <div
+                  key={d.name}
+                  className="flex items-center justify-between text-xs"
+                >
+                  <span className="flex items-center gap-2 text-slate-500">
+                    <span
+                      className="h-2 w-2 rounded-sm"
+                      style={{ background: d.color }}
+                    />
+                    {d.name}
+                  </span>
+                  <span className="font-semibold text-slate-700">
+                    {kg(d.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Panel>
         </div>
 
-        {/* Low stock */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 lg:p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[15px] font-bold text-[#0A1628]">
-              Low Stock Alerts
-            </h2>
-            <button className="text-[12px] text-[#1E4D96] font-semibold hover:underline">
-              Reorder →
-            </button>
-          </div>
-          {lowStockItems.map((item) => (
-            <div
-              key={item.name}
-              className="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0"
-            >
-              <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0 text-red-500">
-                <span className="w-4 h-4">
-                  <AlertIcon />
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-semibold text-[#0A1628] truncate">
-                  {item.name}
-                </p>
-                <p className="text-[12px] text-red-500 mt-0.5">
-                  Only {item.qty} units left
-                </p>
-              </div>
-              <button className="text-[12px] font-semibold text-[#1E4D96] bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0">
-                Order
-              </button>
+        {/* Lists */}
+        <div className="grid grid-cols-1 gap-4 pb-2 lg:grid-cols-3">
+          <Panel
+            title="Recent sales"
+            action="View all"
+            to="/sales"
+            className="lg:col-span-2"
+          >
+            <div className="-my-1 divide-y divide-slate-100">
+              {RECENT_SALES.map((s) => (
+                <div
+                  key={s._id}
+                  className="flex items-center justify-between gap-3 py-2.5"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-[#1E4D96]">
+                      {s.partyName.charAt(0)}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-800">
+                        {s.partyName}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">
+                        {s.invoiceNumber} · {s.productName}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-bold text-slate-900">
+                      {kg(s.quantity)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {paymentTypeLabel(s.paymentType)} · {s.date}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </Panel>
+
+          <Panel title="Stock alerts" action="Inventory" to="/product-inventory">
+            <div className="-my-1 divide-y divide-slate-100">
+              {STOCK_ALERTS.map((item) => {
+                const out = item.status === "out_of_stock";
+                return (
+                  <Link
+                    key={`${item.kind}-${item.name}`}
+                    to={item.href}
+                    className="flex items-center gap-3 py-2.5 transition-colors hover:bg-slate-50/70"
+                  >
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                        out
+                          ? "bg-rose-50 text-rose-500"
+                          : "bg-amber-50 text-amber-500"
+                      }`}
+                    >
+                      <AlertTriangle size={16} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">
+                        {item.name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {item.kind}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        out
+                          ? "bg-rose-50 text-rose-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {out ? "Out of stock" : kg(item.quantity)}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </Panel>
+        </div>
+
+        {/* Top products */}
+        <div className="pb-4">
+          <Panel title="Top products sold this month" action="View all" to="/sales">
+            <div className="space-y-3">
+              {TOP_PRODUCTS.map((p) => (
+                <div key={p.productName}>
+                  <div className="mb-1 flex items-center justify-between text-sm">
+                    <span className="font-medium text-slate-700">
+                      {p.productName}
+                    </span>
+                    <span className="font-semibold text-slate-900">
+                      {kg(p.quantity)}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-[#1E4D96]"
+                      style={{ width: `${(p.quantity / topMax) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
         </div>
       </div>
     </div>
-  );
-}
-
-// ── Icons used only by this page's metric cards ────────────────────
-function BoxIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      width="18"
-      height="18"
-    >
-      <path d="M16.5 7l-6.5-4L3.5 7l6.5 4 6.5-4z" />
-      <path d="M3.5 7v6l6.5 4 6.5-4V7" />
-      <path d="M10 11v6M6.5 5.25L10 7.5l3.5-2.25" />
-    </svg>
-  );
-}
-function CartIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      width="18"
-      height="18"
-    >
-      <path d="M1 1h2.5l2 9.5h9l2-7H5.5" />
-      <circle cx="8" cy="17" r="1.3" />
-      <circle cx="15" cy="17" r="1.3" />
-    </svg>
-  );
-}
-function TrendingUpIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      width="18"
-      height="18"
-    >
-      <polyline points="1,14 7,8 11,12 19,4" />
-      <polyline points="13,4 19,4 19,10" />
-    </svg>
-  );
-}
-function CashIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      width="18"
-      height="18"
-    >
-      <rect x="1" y="4" width="18" height="12" rx="2" />
-      <circle cx="10" cy="10" r="2.5" />
-      <path d="M5 10h.01M15 10h.01" />
-    </svg>
-  );
-}
-function ClockIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      width="18"
-      height="18"
-    >
-      <circle cx="10" cy="10" r="8" />
-      <path d="M10 5.5V10l3 2" />
-    </svg>
-  );
-}
-function AlertIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      width="18"
-      height="18"
-    >
-      <path d="M10 2L1.5 17h17L10 2z" />
-      <path d="M10 8v4M10 14.5v.5" />
-    </svg>
   );
 }

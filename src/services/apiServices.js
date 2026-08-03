@@ -149,6 +149,52 @@ export const DeleteProduction = (id) => {
   return DELETE(`/productions/${id}`);
 };
 
+/* ---------------------------------- Sales ---------------------------------- */
+
+/**
+ * Sales list. `fromDate` / `toDate` are DD/MM/YYYY; `paymentType` is one of
+ * all | cash | credit | cheque | upi | bank_transfer; `sortBy` is one of
+ * date | invoiceNumber | quantity | paymentType | createdAt.
+ */
+export const GetSales = ({
+  search,
+  paymentType,
+  fromDate,
+  toDate,
+  sortBy,
+  sortOrder,
+  page,
+  limit,
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (search) qs.append("search", search);
+  if (paymentType && paymentType !== "all") qs.append("paymentType", paymentType);
+  if (fromDate) qs.append("fromDate", fromDate);
+  if (toDate) qs.append("toDate", toDate);
+  if (sortBy) qs.append("sortBy", sortBy);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/sales${q ? `?${q}` : ""}`);
+};
+
+export const getSaleById = (id) => {
+  return GET(`/sales/${id}`);
+};
+
+export const createSale = (data) => {
+  return POST(`/sales`, data);
+};
+
+export const updateSale = (id, data) => {
+  return PUT(`/sales/${id}`, data);
+};
+
+export const DeleteSale = (id) => {
+  return DELETE(`/sales/${id}`);
+};
+
 /* -------------------------- Product / by-product inv ----------------------- */
 
 // Product inventory (grouped by product name).

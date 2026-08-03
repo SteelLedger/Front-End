@@ -1,36 +1,43 @@
 import { useEffect, useRef } from "react";
 import { X, Plus, Check } from "lucide-react";
 import SearchableSelect from "./SearchableSelect";
-import {
-  PAYMENT_TYPE_SUGGESTIONS,
-  formatINR,
-  saleBalance,
-} from "../utils/sales";
+import InfoTip from "./InfoTip";
+import { gmToKgDisplay } from "../utils/units";
+import { PAYMENT_TYPES } from "../utils/sales";
 
 const FIELD =
   "w-full rounded-md border px-3 py-2.5 text-sm text-slate-700 " +
   "placeholder:text-slate-400 focus:outline-none focus:ring-1";
 
-function Field({ label, required, hint, children }) {
+function Field({ label, required, info, children }) {
   return (
     <label className="block">
       <span className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-slate-600">
         {label}
         {required && <span className="text-rose-500">*</span>}
-        {hint && <span className="font-normal text-slate-400">({hint})</span>}
+        {info && <InfoTip text={info} />}
       </span>
       {children}
     </label>
   );
 }
 
-const REQUIRED = ["date", "invoiceNumber", "partyName", "paymentType"];
+// Every field the create/update API takes is required.
+const REQUIRED = [
+  "partyId",
+  "invoiceNumber",
+  "date",
+  "paymentType",
+  "productId",
+  "quantity",
+];
 
 /**
  * AddSaleDrawer
- * Right-side slide-in panel for creating / editing a sale invoice.
- * Party, product and byproduct are dropdowns; payment type is free text with
- * suggestions. A sale must name a product or a byproduct (at least one).
+ * Right-side slide-in panel for creating / editing a sale.
+ * Party and product pickers resolve to real ObjectIds (`partyId`/`productId`);
+ * payment type is the API's fixed enum. Quantity is entered in kg — the parent
+ * converts to grams for the wire.
  *
  * Form state lives in the parent (`formState` / `setFormState`).
  */
@@ -42,7 +49,6 @@ export default function AddSaleDrawer({
   saving,
   partyOptions = [],
   productOptions = [],
-  byProductOptions = [],
   onClose,
   onSubmit,
 }) {
@@ -71,35 +77,43 @@ export default function AddSaleDrawer({
   const update = (field, value) =>
     setFormState((f) => ({ ...f, [field]: value, error: "", errorFields: [] }));
 
-  // Party dropdown keeps the matching party id around for the future API.
-  function pickParty(val) {
-    const match = partyOptions.find(
-      (o) => o.name.trim().toLowerCase() === val.trim().toLowerCase(),
-    );
-    setFormState((f) => ({
-      ...f,
-      partyName: val,
-      partyId: match ? match.id : "",
-      error: "",
-      errorFields: [],
-    }));
+  // Resolve the typed/selected name to the id the API wants.
+  function pickFrom(options, nameKey, idKey) {
+    return (val) => {
+      const match = options.find(
+        (o) => o.name.trim().toLowerCase() === val.trim().toLowerCase(),
+      );
+      setFormState((f) => ({
+        ...f,
+        [nameKey]: val,
+        [idKey]: match ? match.id : "",
+        error: "",
+        errorFields: [],
+      }));
+    };
+  }
+
+  const selectedProduct =
+    productOptions.find((p) => p.id === formState.productId) || null;
+
+  function fieldMissing(name) {
+    if (name === "quantity")
+      return formState.quantity === "" || Number(formState.quantity) <= 0;
+    return !String(formState[name] ?? "").trim();
   }
 
   function handleSubmit(e) {
     e.preventDefault();
-    const missing = REQUIRED.filter(
-      (name) => !String(formState[name] ?? "").trim(),
-    );
-    const noItem =
-      !formState.productName.trim() && !formState.byProductName.trim();
-    if (noItem) missing.push("productName", "byProductName");
-
+    const missing = REQUIRED.filter(fieldMissing);
     if (missing.length) {
+      const unmatched =
+        (!formState.partyId && formState.partyName.trim()) ||
+        (!formState.productId && formState.productName.trim());
       setFormState((f) => ({
         ...f,
         errorFields: missing,
-        error: noItem
-          ? "Select a product or a byproduct for this sale."
+        error: unmatched
+          ? "Pick the party and product from the list."
           : "Please fill all required fields.",
       }));
       return;
@@ -115,8 +129,6 @@ export default function AddSaleDrawer({
         ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
         : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
     }`;
-
-  const balance = saleBalance(formState);
 
   return (
     <div
@@ -186,13 +198,13 @@ export default function AddSaleDrawer({
                 <input
                   value={formState.invoiceNumber}
                   onChange={(e) => update("invoiceNumber", e.target.value)}
-                  placeholder="e.g. 1808"
+                  placeholder="e.g. SAL-2024-001"
                   className={fieldClass("invoiceNumber")}
                 />
               </Field>
             </div>
 
-            {/* Party — searchable dropdown resolving to a party id. */}
+            {/* Party — resolves to partyId. */}
             <div>
               <span className="mb-1.5 block text-xs font-semibold text-slate-600">
                 Party Name<span className="ml-0.5 text-rose-500">*</span>
@@ -200,96 +212,67 @@ export default function AddSaleDrawer({
               <SearchableSelect
                 inputRef={partyRef}
                 value={formState.partyName}
-                onChange={pickParty}
+                onChange={pickFrom(partyOptions, "partyName", "partyId")}
                 options={partyOptions.map((o) => o.name)}
                 placeholder="Search or select a party"
-                invalid={errs.includes("partyName")}
+                invalid={errs.includes("partyId")}
                 allowCustom={false}
               />
             </div>
 
+            {/* Product — resolves to productId. */}
             <div>
               <span className="mb-1.5 block text-xs font-semibold text-slate-600">
-                Product Name
+                Product Name<span className="ml-0.5 text-rose-500">*</span>
               </span>
               <SearchableSelect
                 value={formState.productName}
-                onChange={(v) => update("productName", v)}
-                options={productOptions}
+                onChange={pickFrom(productOptions, "productName", "productId")}
+                options={productOptions.map((o) => o.name)}
                 placeholder="Search or select a product"
-                invalid={errs.includes("productName")}
+                invalid={errs.includes("productId")}
                 allowCustom={false}
               />
-            </div>
-
-            <div>
-              <span className="mb-1.5 block text-xs font-semibold text-slate-600">
-                By Product Name
-              </span>
-              <SearchableSelect
-                value={formState.byProductName}
-                onChange={(v) => update("byProductName", v)}
-                options={byProductOptions}
-                placeholder="Search or select a byproduct"
-                invalid={errs.includes("byProductName")}
-                allowCustom={false}
-              />
-              <p className="mt-1 text-[11px] text-slate-400">
-                Fill either a product or a byproduct — whichever this invoice is
-                for.
-              </p>
+              {selectedProduct && (
+                <div className="mt-1.5 flex items-center gap-1 text-xs text-slate-500">
+                  <span className="font-medium text-slate-600">In stock:</span>
+                  <span className="font-semibold text-slate-800">
+                    {gmToKgDisplay(selectedProduct.totalQtyGm)} kg
+                  </span>
+                  <InfoTip text="This value is in kg." />
+                </div>
+              )}
             </div>
 
             <Field label="Payment Type" required>
-              <input
+              <select
                 value={formState.paymentType}
                 onChange={(e) => update("paymentType", e.target.value)}
-                list="sale-payment-types"
-                placeholder="e.g. Cash"
-                className={fieldClass("paymentType")}
-              />
-              <datalist id="sale-payment-types">
-                {PAYMENT_TYPE_SUGGESTIONS.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
-            </Field>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Amount">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  value={formState.amount}
-                  onChange={(e) => update("amount", e.target.value)}
-                  placeholder="₹ 0"
-                  className={fieldClass("amount")}
-                />
-              </Field>
-              <Field label="Received">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  value={formState.received}
-                  onChange={(e) => update("received", e.target.value)}
-                  placeholder="₹ 0"
-                  className={fieldClass("received")}
-                />
-              </Field>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-              <span className="text-xs font-medium text-slate-500">Balance</span>
-              <span
-                className={`text-sm font-semibold ${
-                  balance > 0 ? "text-rose-600" : "text-emerald-600"
+                className={`${fieldClass("paymentType")} ${
+                  formState.paymentType ? "text-slate-700" : "text-slate-400"
                 }`}
               >
-                {formatINR(balance)}
-              </span>
-            </div>
+                <option value="">-- Select Payment Type --</option>
+                {PAYMENT_TYPES.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Quantity (In kg)" required info="Enter quantity in kg.">
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={formState.quantity}
+                onChange={(e) => update("quantity", e.target.value)}
+                placeholder="e.g. 100 (kg)"
+                className={fieldClass("quantity")}
+              />
+            </Field>
           </div>
         </form>
 

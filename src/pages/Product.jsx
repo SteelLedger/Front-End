@@ -1,15 +1,13 @@
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
-import { Plus, Boxes, Package, PackageCheck, PackageX } from "lucide-react";
+import { Plus } from "lucide-react";
 import ProductionDrawer from "../components/ProductionDrawer";
 import ProductionRecords from "../components/ProductionRecords";
-import InventoryTab from "../components/InventoryTab";
 import { todayISO } from "../utils/party";
-import { kgToGm, gmToKg, gmToKgDisplay } from "../utils/units";
+import { kgToGm, gmToKg } from "../utils/units";
 import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
 import {
   GetRawMaterials,
-  GetByProducts,
   createProduction,
   updateProduction,
   getProductionById,
@@ -88,116 +86,9 @@ function buildProductionPayload(form) {
   };
 }
 
-/* ------------------------- by-product inventory config --------------------- */
-
-function statusBadge(status) {
-  return (
-    <span
-      className={`inline-block whitespace-nowrap text-xs font-medium px-2 py-0.5 rounded-full ${
-        status === "in_stock"
-          ? "bg-emerald-50 text-emerald-700"
-          : "bg-rose-50 text-rose-700"
-      }`}
-    >
-      {status === "in_stock" ? "In stock" : "Out of stock"}
-    </span>
-  );
-}
-
-function extractByProducts(res) {
-  const body = res?.data ?? {};
-  const d = body.data ?? {};
-  const list = Array.isArray(d) ? d : (d.byProducts ?? []);
-  const summary = (Array.isArray(d) ? {} : d.summary) ?? {};
-  const total =
-    body.meta?.pagination?.total ?? (Array.isArray(list) ? list.length : 0);
-  return {
-    list: Array.isArray(list) ? list : [],
-    summary,
-    total: Number(total) || 0,
-  };
-}
-
-const normalizeByProduct = (raw) => ({
-  id: raw.slug,
-  byProductName: raw.byProductName || "—",
-  slug: raw.slug || "—",
-  totalQtyGm: raw.totalQty ?? 0,
-  status: raw.status || (Number(raw.totalQty) > 0 ? "in_stock" : "out_of_stock"),
-});
-
-const BYPRODUCT_COLUMNS = [
-  {
-    label: "Byproduct",
-    sortField: "byProductName",
-    render: (r) => (
-      <span className="font-medium text-slate-800">{r.byProductName}</span>
-    ),
-  },
-  { label: "Slug", sortField: "slug", render: (r) => r.slug },
-  {
-    label: "Total Qty",
-    sortField: "totalQty",
-    render: (r) => (
-      <span className="font-semibold text-slate-900">
-        {gmToKgDisplay(r.totalQtyGm)} kg
-      </span>
-    ),
-  },
-  { label: "Status", sortField: null, render: (r) => statusBadge(r.status) },
-];
-
-const byproductStats = (s) => [
-  {
-    icon: Boxes,
-    iconBg: "bg-blue-50",
-    iconColor: "text-blue-600",
-    label: "Total Qty (kg)",
-    value: gmToKgDisplay(s.totalQuantity || 0),
-  },
-  {
-    icon: Package,
-    iconBg: "bg-violet-50",
-    iconColor: "text-violet-600",
-    label: "Byproduct Types",
-    value: String(s.totalByProductTypes ?? 0),
-  },
-  {
-    icon: PackageCheck,
-    iconBg: "bg-emerald-50",
-    iconColor: "text-emerald-600",
-    label: "In Stock",
-    value: String(s.inStockCount ?? 0),
-  },
-  {
-    icon: PackageX,
-    iconBg: "bg-rose-50",
-    iconColor: "text-rose-600",
-    label: "Out of Stock",
-    value: String(s.outOfStockCount ?? 0),
-  },
-];
-
 /* ----------------------------------- page ---------------------------------- */
 
-function TabBtn({ active, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-        active
-          ? "bg-[#1E4D96] text-white"
-          : "bg-white text-slate-500 border border-slate-200 hover:border-slate-300"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 export default function Product() {
-  const [tab, setTab] = useState("items");
   const [sheets, setSheets] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mode, setMode] = useState("add");
@@ -320,32 +211,7 @@ export default function Product() {
           </button>
         </div>
 
-        {/* Inner tabs */}
-        <div className="flex items-center gap-2 mb-4">
-          <TabBtn active={tab === "items"} onClick={() => setTab("items")}>
-            Items
-          </TabBtn>
-          <TabBtn
-            active={tab === "byproducts"}
-            onClick={() => setTab("byproducts")}
-          >
-            Byproducts
-          </TabBtn>
-        </div>
-
-        {tab === "items" ? (
-          <ProductionRecords onEdit={openEdit} reloadKey={reloadKey} />
-        ) : (
-          <InventoryTab
-            fetchFn={GetByProducts}
-            extract={extractByProducts}
-            normalize={normalizeByProduct}
-            columns={BYPRODUCT_COLUMNS}
-            statCards={byproductStats}
-            searchPlaceholder="Search byproduct name or slug"
-            reloadKey={reloadKey}
-          />
-        )}
+        <ProductionRecords onEdit={openEdit} reloadKey={reloadKey} />
       </div>
 
       <ProductionDrawer

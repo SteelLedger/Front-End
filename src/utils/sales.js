@@ -1,23 +1,33 @@
-// Sales helpers. The sales APIs aren't built yet, so the page runs off the
-// seed rows below and keeps everything in local state. When the endpoints land,
-// replace `seedSales()` with the list call and post `buildSalePayload()`.
+// Sales helpers, matching the /sales API contract.
+//
+// A sale is: partyId, invoiceNumber, date (DD/MM/YYYY), paymentType (enum),
+// productId, quantity (GRAMS on the wire, kg in the UI). The API carries no
+// prices or byproducts, so neither does this module.
 
-import { todayISO, isoToDMY } from "./party";
+import { todayISO, isoToDMY, dmyToISO } from "./party";
+import { kgToGm, gmToKg } from "./units";
 
-export const TRANSACTION_TYPES = ["Sale", "Sale Return", "Sale Order"];
-
-// Payment type is a free-text field (per spec) — these only feed the input's
-// datalist so the common ones are one click away.
-export const PAYMENT_TYPE_SUGGESTIONS = [
-  "Cash",
-  "Cheque",
-  "UPI",
-  "Bank Transfer",
-  "Credit",
+// The API's PaymentType enum. `value` goes on the wire, `label` on screen.
+export const PAYMENT_TYPES = [
+  { value: "cash", label: "Cash" },
+  { value: "credit", label: "Credit" },
+  { value: "cheque", label: "Cheque" },
+  { value: "upi", label: "UPI" },
+  { value: "bank_transfer", label: "Bank Transfer" },
 ];
 
-export const FIRM_OPTIONS = ["All Firms", "Main Firm", "Branch Firm"];
-export const USER_OPTIONS = ["All Users", "Admin", "Operator"];
+export function paymentTypeLabel(value) {
+  return PAYMENT_TYPES.find((p) => p.value === value)?.label || value || "—";
+}
+
+// Fields GET /sales will sort on — anything else has to stay unsorted.
+export const SORTABLE_FIELDS = [
+  "date",
+  "invoiceNumber",
+  "quantity",
+  "paymentType",
+  "createdAt",
+];
 
 export const PERIOD_OPTIONS = [
   { value: "today", label: "Today" },
@@ -71,13 +81,42 @@ export function rangeForPeriod(period) {
   }
 }
 
-export function formatINR(value) {
-  const n = Number(value) || 0;
-  return `₹ ${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/** "2026-08-01" -> "01 Aug 2026" */
+export function formatISODate(isoDate) {
+  if (!isoDate) return "";
+  const [y, m, d] = isoDate.split("-");
+  return `${d} ${MONTHS[Number(m) - 1] ?? m} ${y}`;
 }
 
-export function saleBalance(sale) {
-  return (Number(sale.amount) || 0) - (Number(sale.received) || 0);
+/** A range as one readable label for the filter chip. */
+export function formatDateRange(fromISO, toISO) {
+  if (!fromISO && !toISO) return "All dates";
+  if (!fromISO) return `Until ${formatISODate(toISO)}`;
+  if (!toISO) return `From ${formatISODate(fromISO)}`;
+  if (fromISO === toISO) return formatISODate(fromISO);
+
+  const [fy, fm, fd] = fromISO.split("-");
+  const [ty, tm, td] = toISO.split("-");
+  // Same year reads fine without repeating it on both sides.
+  if (fy === ty) {
+    return `${fd} ${MONTHS[Number(fm) - 1]} – ${td} ${MONTHS[Number(tm) - 1]} ${ty}`;
+  }
+  return `${formatISODate(fromISO)} – ${formatISODate(toISO)}`;
 }
 
 export function emptySaleForm() {
@@ -86,127 +125,71 @@ export function emptySaleForm() {
     invoiceNumber: "",
     partyId: "",
     partyName: "",
+    productId: "",
     productName: "",
-    byProductName: "",
     paymentType: "",
-    amount: "",
-    received: "",
+    quantity: "", // kg in the UI
     error: "",
     errorFields: [],
   };
 }
 
-/** Drawer form -> the shape the create/update endpoint is expected to take. */
+/** Drawer form -> POST/PUT body. Quantity goes over the wire in grams. */
 export function buildSalePayload(f) {
   return {
+    partyId: f.partyId,
+    invoiceNumber: f.invoiceNumber.trim(),
     date: isoToDMY(f.date),
-    invoiceNumber: f.invoiceNumber.trim(),
-    partyId: f.partyId || undefined,
-    partyName: f.partyName.trim(),
-    productName: f.productName.trim(),
-    byProductName: f.byProductName.trim(),
-    paymentType: f.paymentType.trim(),
-    amount: Number(f.amount) || 0,
-    received: Number(f.received) || 0,
+    paymentType: f.paymentType,
+    productId: f.productId,
+    quantity: kgToGm(f.quantity),
   };
 }
 
-/** A sale row (list shape) built from the drawer form. */
-export function saleFromForm(f, id) {
+/** A sale from the API -> the shape the list renders. */
+export function normalizeSale(raw) {
+  const idOf = (v) => (typeof v === "object" && v !== null ? v._id : v) ?? "";
   return {
-    id,
-    date: f.date,
-    invoiceNumber: f.invoiceNumber.trim(),
-    partyId: f.partyId || "",
-    partyName: f.partyName.trim(),
-    productName: f.productName.trim(),
-    byProductName: f.byProductName.trim(),
-    transaction: "Sale",
-    paymentType: f.paymentType.trim(),
-    amount: Number(f.amount) || 0,
-    received: Number(f.received) || 0,
+    id: raw._id ?? raw.id,
+    invoiceNumber: raw.invoiceNumber ?? "",
+    date: raw.date ?? "", // DD/MM/YYYY
+    partyId: idOf(raw.partyId),
+    partyName: raw.partyName ?? "",
+    productId: idOf(raw.productId),
+    productName: raw.productName ?? "",
+    productSize: raw.productSize ?? "",
+    paymentType: raw.paymentType ?? "",
+    quantity: raw.quantity ?? 0, // grams
   };
 }
 
+/** A normalized sale -> the drawer form (grams back to kg). */
 export function saleToForm(s) {
   return {
-    date: s.date,
+    date: s.date ? dmyToISO(s.date) : todayISO(),
     invoiceNumber: s.invoiceNumber || "",
     partyId: s.partyId || "",
     partyName: s.partyName || "",
+    productId: s.productId || "",
     productName: s.productName || "",
-    byProductName: s.byProductName || "",
     paymentType: s.paymentType || "",
-    amount: s.amount ?? "",
-    received: s.received ?? "",
+    quantity: s.quantity != null ? gmToKg(s.quantity) : "",
     error: "",
     errorFields: [],
   };
 }
 
-// Placeholder rows so the list, filters and totals have something to show
-// before the API exists. Dates are relative to today so they never go stale.
-const SEED = [
-  ["1807", "HARIHAR", "Patta 101", "", "Cash", 802, 0, 0],
-  ["1806", "HARIHAR", "Patta 102", "Khuniya", "Cash", 860, 860, 0],
-  ["1805", "MEWAD TRADER", "Patta 95", "", "UPI", 199, 199, -1],
-  ["1804", "LK INDUSTRIES", "Patta 101", "Lafa", "Cash", 902, 0, -1],
-  ["1803", "MALVI ENGINEERS", "Patta 110", "", "Cheque", 978, 500, -2],
-  ["1802", "MALVI ENGINEERS", "Patta 102", "Scrap", "Cash", 999, 0, -2],
-  ["1801", "SHREE METALS", "Patta 95", "", "Credit", 1450, 0, -3],
-  ["1800", "HARIHAR", "Patta 110", "Tukda", "Cash", 620, 620, -4],
-  ["1799", "MEWAD TRADER", "Patta 101", "", "Bank Transfer", 2380, 1000, -5],
-  ["1798", "LK INDUSTRIES", "Patta 102", "Khuniya", "Cash", 745, 0, -6],
-  ["1797", "SHREE METALS", "Patta 95", "", "UPI", 1120, 1120, -8],
-  ["1796", "MALVI ENGINEERS", "Patta 110", "Lafa", "Cash", 1875, 0, -10],
-];
-
-export function seedSales() {
-  return SEED.map(
-    (
-      [
-        invoiceNumber,
-        partyName,
-        productName,
-        byProductName,
-        paymentType,
-        amount,
-        received,
-        dayOffset,
-      ],
-      i,
-    ) => {
-      const d = new Date();
-      d.setDate(d.getDate() + dayOffset);
-      return {
-        id: `seed-${i}`,
-        date: iso(d),
-        invoiceNumber,
-        partyId: "",
-        partyName,
-        productName,
-        byProductName,
-        transaction: "Sale",
-        paymentType,
-        amount,
-        received,
-      };
-    },
-  );
+/** Dig the list, summary and total out of the response envelope. */
+export function extractSales(res) {
+  const body = res?.data ?? {};
+  const d = body.data ?? {};
+  const list = Array.isArray(d) ? d : (d.sales ?? []);
+  const summary = (Array.isArray(d) ? {} : d.summary) ?? {};
+  const total =
+    body.meta?.pagination?.total ?? (Array.isArray(list) ? list.length : 0);
+  return {
+    list: Array.isArray(list) ? list : [],
+    summary,
+    total: Number(total) || 0,
+  };
 }
-
-// Fallbacks for the drawer dropdowns when the (unrelated) lookup APIs are
-// unreachable — keeps the form usable instead of showing three empty lists.
-export const FALLBACK_PARTIES = [
-  "HARIHAR",
-  "MEWAD TRADER",
-  "LK INDUSTRIES",
-  "MALVI ENGINEERS",
-  "SHREE METALS",
-];
-export const FALLBACK_PRODUCTS = [
-  "Patta 95",
-  "Patta 101",
-  "Patta 102",
-  "Patta 110",
-];

@@ -18,4 +18,15 @@ html {
   .no-scrollbar::-webkit-scrollbar {
     display: none; /* Chrome / Safari / Edge */
   }
+
+  /* Tidier native date inputs: drop the browser's calendar glyph (we draw our
+     own icon) and let a click anywhere in the field open the picker. */
+  .date-field::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
 }

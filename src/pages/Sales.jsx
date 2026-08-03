@@ -1,12 +1,10 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "react-toastify";
 import {
   Plus,
   Search,
   X,
   Settings,
-  Calendar,
-  Filter,
   Printer,
   Share2,
   MoreVertical,
@@ -16,6 +14,8 @@ import {
   Trash2,
   Inbox,
   Check,
+  Loader2,
+  Boxes,
   ChevronUp,
   ChevronDown,
   ChevronLeft,
@@ -23,138 +23,41 @@ import {
 } from "lucide-react";
 import AddSaleDrawer from "../components/AddSaleDrawer";
 import ConfirmDialog from "../components/ConfirmDialog";
+import MenuPopover from "../components/MenuPopover";
+import FilterSelect from "../components/FilterSelect";
+import DateRangeFilter from "../components/DateRangeFilter";
 import { isoToDMY } from "../utils/party";
-import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
+import { gmToKgDisplay } from "../utils/units";
 import {
   PERIOD_OPTIONS,
-  FIRM_OPTIONS,
-  USER_OPTIONS,
-  FALLBACK_PARTIES,
-  FALLBACK_PRODUCTS,
+  PAYMENT_TYPES,
   rangeForPeriod,
-  formatINR,
-  saleBalance,
+  paymentTypeLabel,
   emptySaleForm,
-  saleFromForm,
+  buildSalePayload,
+  normalizeSale,
   saleToForm,
-  seedSales,
+  extractSales,
 } from "../utils/sales";
-import { GetParties, GetProducts, GetByProducts } from "../services/apiServices";
+import {
+  GetSales,
+  createSale,
+  updateSale,
+  DeleteSale,
+  GetParties,
+  GetProducts,
+} from "../services/apiServices";
 
 const PAGE_SIZE = 10;
-const PILL =
-  "inline-flex items-center gap-1.5 rounded-full bg-[#EEF3FB] px-3.5 py-2 " +
-  "text-sm font-medium text-[#1E4D96]";
+
+const PAYMENT_FILTER_OPTIONS = [
+  { value: "all", label: "All Payments" },
+  ...PAYMENT_TYPES,
+];
+// "Custom" isn't pickable — it's what the chip reads once dates are hand-set.
+const PERIOD_PRESETS = PERIOD_OPTIONS.filter((o) => o.value !== "custom");
 
 /* -------------------------------- pieces ---------------------------------- */
-
-/** Rounded chip wrapping a native select (period / firm / user filters). */
-function PillSelect({ value, onChange, options, ariaLabel }) {
-  return (
-    <span className={`${PILL} relative pr-8`}>
-      <select
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="cursor-pointer appearance-none bg-transparent pr-1 font-medium text-[#1E4D96] focus:outline-none"
-      >
-        {options.map((o) => {
-          const val = typeof o === "string" ? o : o.value;
-          const label = typeof o === "string" ? o : o.label;
-          return (
-            <option key={val} value={val} className="text-slate-700">
-              {label}
-            </option>
-          );
-        })}
-      </select>
-      <ChevronDown
-        size={15}
-        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#1E4D96]"
-      />
-    </span>
-  );
-}
-
-/** Funnel popover with a checkbox list of the column's distinct values. */
-function ColumnFilter({ label, options, selected, onChange }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function onDocClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  const toggle = (value) =>
-    onChange(
-      selected.includes(value)
-        ? selected.filter((v) => v !== value)
-        : [...selected, value],
-    );
-
-  return (
-    <span ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label={`Filter by ${label}`}
-        title={`Filter by ${label}`}
-        className={`rounded p-0.5 transition-colors ${
-          selected.length
-            ? "text-[#1E4D96]"
-            : "text-slate-300 hover:text-slate-500"
-        }`}
-      >
-        <Filter size={13} fill={selected.length ? "currentColor" : "none"} />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-30 mt-1.5 w-52 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          <div className="max-h-56 overflow-y-auto">
-            {options.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-slate-400">
-                Nothing to filter
-              </p>
-            ) : (
-              options.map((o) => (
-                <button
-                  key={o}
-                  type="button"
-                  onClick={() => toggle(o)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm normal-case tracking-normal text-slate-700 transition-colors hover:bg-blue-50"
-                >
-                  <span
-                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                      selected.includes(o)
-                        ? "border-[#1E4D96] bg-[#1E4D96] text-white"
-                        : "border-slate-300"
-                    }`}
-                  >
-                    {selected.includes(o) && <Check size={11} strokeWidth={3} />}
-                  </span>
-                  <span className="truncate font-normal">{o}</span>
-                </button>
-              ))
-            )}
-          </div>
-          {selected.length > 0 && (
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              className="mt-1 w-full border-t border-slate-100 px-3 py-1.5 text-left text-xs font-semibold normal-case tracking-normal text-[#1E4D96] hover:bg-blue-50"
-            >
-              Clear filter
-            </button>
-          )}
-        </div>
-      )}
-    </span>
-  );
-}
 
 function SortIcon({ active, dir }) {
   return (
@@ -175,103 +78,105 @@ function SortIcon({ active, dir }) {
   );
 }
 
-function Th({ label, field, sortBy, sortOrder, onSort, align, children }) {
+/** Header cell. Only fields the API can sort on get a sort button. */
+function Th({ label, field, sortBy, sortOrder, onSort, align }) {
+  const right = align === "right";
   return (
-    <th
-      className={`px-4 py-3 font-semibold ${align === "right" ? "text-right" : ""}`}
-    >
-      <span
-        className={`inline-flex items-center gap-1.5 ${
-          align === "right" ? "flex-row-reverse" : ""
-        }`}
-      >
-        {field ? (
-          <button
-            type="button"
-            onClick={() => onSort(field)}
-            className="inline-flex items-center gap-1 hover:text-slate-700"
-          >
-            {label}
-            <SortIcon active={sortBy === field} dir={sortOrder} />
-          </button>
-        ) : (
-          label
-        )}
-        {children}
-      </span>
+    <th className={`px-4 py-3 font-semibold ${right ? "text-right" : ""}`}>
+      {field ? (
+        // `uppercase` is repeated here because the preflight resets
+        // text-transform on <button>, so it wouldn't inherit from the row.
+        <button
+          type="button"
+          onClick={() => onSort(field)}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-slate-700 ${
+            right ? "flex-row-reverse" : ""
+          } ${sortBy === field ? "text-[#1E4D96]" : ""}`}
+        >
+          {label}
+          <SortIcon active={sortBy === field} dir={sortOrder} />
+        </button>
+      ) : (
+        label
+      )}
     </th>
   );
 }
 
-/** Per-row ⋮ menu (Edit / Delete). */
+/**
+ * Per-row ⋮ menu (Edit / Delete). The panel is portalled out of the table so
+ * the horizontally scrolling wrapper can't clip it or scroll sideways to fit.
+ */
 function RowMenu({ onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const btnRef = useRef(null);
 
-  useEffect(() => {
-    function onDocClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
+  const item =
+    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors";
 
   return (
-    <span ref={ref} className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="More actions"
-        className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`rounded-md p-1.5 transition-colors hover:bg-slate-100 hover:text-slate-600 ${
+          open ? "bg-slate-100 text-slate-600" : "text-slate-400"
+        }`}
       >
         <MoreVertical size={15} />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-36 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onEdit();
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
-          >
-            <Pencil size={14} /> Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-          >
-            <Trash2 size={14} /> Delete
-          </button>
-        </div>
-      )}
-    </span>
+
+      <MenuPopover
+        open={open}
+        anchorRef={btnRef}
+        onClose={() => setOpen(false)}
+        align="right"
+        width={150}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            setOpen(false);
+            onEdit();
+          }}
+          className={`${item} text-slate-700 hover:bg-blue-50`}
+        >
+          <Pencil size={14} /> Edit
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            setOpen(false);
+            onDelete();
+          }}
+          className={`${item} text-rose-600 hover:bg-rose-50`}
+        >
+          <Trash2 size={14} /> Delete
+        </button>
+      </MenuPopover>
+    </>
   );
 }
 
 /** "Sale Invoices ⌄" heading — the other views aren't built yet. */
 function ViewSwitcher() {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function onDocClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
+  const btnRef = useRef(null);
 
   return (
-    <span ref={ref} className="relative inline-block">
+    <>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
         className="inline-flex items-center gap-1.5 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
       >
         <span className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
@@ -282,25 +187,29 @@ function ViewSwitcher() {
           className={`mt-1 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
-      {open && (
-        <div className="absolute left-0 top-full z-30 mt-2 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          <span className="flex items-center justify-between px-3 py-2 text-sm font-semibold text-[#1E4D96]">
-            Sale Invoices <Check size={14} />
-          </span>
-          {["Payment In", "Sale Order", "Sale Return"].map((v) => (
-            <span
-              key={v}
-              className="flex items-center justify-between px-3 py-2 text-sm text-slate-400"
-            >
-              {v}
-              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold">
-                Soon
-              </span>
+
+      <MenuPopover
+        open={open}
+        anchorRef={btnRef}
+        onClose={() => setOpen(false)}
+        width={196}
+      >
+        <span className="flex items-center justify-between rounded-lg bg-blue-50/60 px-3 py-2 text-sm font-semibold text-[#1E4D96]">
+          Sale Invoices <Check size={14} />
+        </span>
+        {["Payment In", "Sale Order", "Sale Return"].map((v) => (
+          <span
+            key={v}
+            className="flex items-center justify-between px-3 py-2 text-sm text-slate-400"
+          >
+            {v}
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold">
+              Soon
             </span>
-          ))}
-        </div>
-      )}
-    </span>
+          </span>
+        ))}
+      </MenuPopover>
+    </>
   );
 }
 
@@ -320,47 +229,60 @@ function IconBtn({ icon: Icon, label, onClick, className = "" }) {
 
 /* --------------------------------- helpers -------------------------------- */
 
-const distinct = (rows, key) =>
-  [...new Set(rows.map((r) => r[key]).filter(Boolean))].sort();
+// Page through a list endpoint and accumulate everything (bounded).
+async function fetchAll(fetchFn, key, params = {}) {
+  const listOf = (res) => {
+    const d = res?.data?.data ?? {};
+    return Array.isArray(d) ? d : (d[key] ?? []);
+  };
+  const first = await fetchFn({ ...params, page: 1, limit: 100 });
+  const all = [...listOf(first)];
+  const pages = Math.min(first?.data?.meta?.pagination?.totalPages ?? 1, 20);
+  if (pages > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: pages - 1 }, (_, i) =>
+        fetchFn({ ...params, page: i + 2, limit: 100 })
+          .then(listOf)
+          .catch(() => []),
+      ),
+    );
+    rest.forEach((arr) => all.push(...arr));
+  }
+  return all;
+}
 
-function downloadCsv(rows, from, to) {
+function downloadCsv(rows, fromDMY, toDMY) {
   const head = [
     "Date",
     "Invoice no",
     "Party Name",
     "Product",
-    "By Product",
-    "Transaction",
+    "Product Size",
     "Payment Type",
-    "Amount",
-    "Received",
-    "Balance",
+    "Quantity (kg)",
   ];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const body = rows.map((r) =>
     [
-      isoToDMY(r.date),
+      r.date,
       r.invoiceNumber,
       r.partyName,
       r.productName,
-      r.byProductName,
-      r.transaction,
-      r.paymentType,
-      r.amount,
-      r.received,
-      saleBalance(r),
+      r.productSize,
+      paymentTypeLabel(r.paymentType),
+      gmToKgDisplay(r.quantity),
     ]
       .map(cell)
       .join(","),
   );
   const csv = [head.map(cell).join(","), ...body].join("\r\n");
-  // Leading BOM so Excel opens the ₹ / UTF-8 text correctly.
+  // Leading BOM so Excel opens the UTF-8 text correctly.
   const url = URL.createObjectURL(
     new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" }),
   );
   const a = document.createElement("a");
   a.href = url;
-  a.download = `sale-invoices-${from}-to-${to}.csv`;
+  a.download = `sale-invoices-${fromDMY.replace(/\//g, "-")}-to-${toDMY.replace(/\//g, "-")}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -368,22 +290,20 @@ function downloadCsv(rows, from, to) {
 /* ---------------------------------- page ---------------------------------- */
 
 export default function Sales() {
-  // Sales aren't on the API yet — the list lives in local state off the seed rows.
-  const [sales, setSales] = useState(seedSales);
+  const [sales, setSales] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [listError, setListError] = useState("");
 
   const [period, setPeriod] = useState("this_month");
   const [from, setFrom] = useState(() => rangeForPeriod("this_month").from);
   const [to, setTo] = useState(() => rangeForPeriod("this_month").to);
-  const [firm, setFirm] = useState(FIRM_OPTIONS[0]);
-  const [user, setUser] = useState(USER_OPTIONS[0]);
+  const [paymentType, setPaymentType] = useState("all");
 
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [colFilters, setColFilters] = useState({
-    partyName: [],
-    transaction: [],
-    paymentType: [],
-  });
   const [sortBy, setSortBy] = useState("date");
   const [sortOrder, setSortOrder] = useState("desc");
   const [page, setPage] = useState(1);
@@ -394,130 +314,101 @@ export default function Sales() {
   const [form, setForm] = useState(emptySaleForm);
   const [saving, setSaving] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
-  // Dropdown lookups. Parties / products / byproducts already have endpoints,
-  // so use them — with static fallbacks so the form still works offline.
+  // Dropdown lookups.
   const [parties, setParties] = useState([]);
   const [products, setProducts] = useState([]);
-  const [byProducts, setByProducts] = useState([]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const fromDMY = isoToDMY(from);
+  const toDMY = isoToDMY(to);
+  const filtersDirty =
+    period !== "this_month" || paymentType !== "all" || !!query.trim();
+
+  // Debounce the search box (and reset to page 1).
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  const listParams = useCallback(
+    () => ({
+      search: debouncedQuery || undefined,
+      paymentType,
+      fromDate: fromDMY || undefined,
+      toDate: toDMY || undefined,
+      sortBy,
+      sortOrder,
+    }),
+    [debouncedQuery, paymentType, fromDMY, toDMY, sortBy, sortOrder],
+  );
+
+  const fetchSales = useCallback(async () => {
+    setLoading(true);
+    setListError("");
+    try {
+      const res = await GetSales({ ...listParams(), page, limit: PAGE_SIZE });
+      const { list, summary: s, total: t } = extractSales(res);
+      setSales(list.map(normalizeSale));
+      setSummary(s);
+      setTotal(t);
+    } catch (err) {
+      setSales([]);
+      setListError("Couldn't load sales.");
+      toast.error(err?.response?.data?.message || "Failed to load sales");
+    } finally {
+      setLoading(false);
+    }
+  }, [listParams, page]);
 
   useEffect(() => {
-    let alive = true;
-    const listOf = (res, key) => {
-      const d = res?.data?.data ?? res?.data ?? [];
-      return Array.isArray(d) ? d : (d[key] ?? []);
-    };
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSales();
+  }, [fetchSales]);
 
+  // Party + product pickers for the drawer.
+  useEffect(() => {
+    let alive = true;
     async function loadLookups() {
-      const [partyRes, productRes, byProductRes] = await Promise.allSettled([
-        GetParties({ page: 1, limit: 100 }),
-        GetProducts({ page: 1, limit: 100 }),
-        GetByProducts({ page: 1, limit: 100 }),
+      const [partyRes, productRes] = await Promise.allSettled([
+        fetchAll(GetParties, "parties"),
+        fetchAll(GetProducts, "products"),
       ]);
       if (!alive) return;
 
-      const partyList =
-        partyRes.status === "fulfilled"
-          ? listOf(partyRes.value, "parties")
-              .map((p) => ({ id: p._id ?? p.id ?? "", name: p.name || "" }))
-              .filter((p) => p.name)
-          : [];
-      setParties(
-        partyList.length
-          ? partyList
-          : FALLBACK_PARTIES.map((name) => ({ id: "", name })),
-      );
+      if (partyRes.status === "fulfilled") {
+        setParties(
+          partyRes.value
+            .map((p) => ({ id: p._id ?? p.id, name: p.name || "" }))
+            .filter((p) => p.id && p.name),
+        );
+      } else {
+        toast.error("Couldn't load parties");
+      }
 
-      const productList =
-        productRes.status === "fulfilled"
-          ? [
-              ...new Set(
-                listOf(productRes.value, "products")
-                  .map((p) => p.productName)
-                  .filter(Boolean),
-              ),
-            ]
-          : [];
-      setProducts(productList.length ? productList : FALLBACK_PRODUCTS);
-
-      const byProductList =
-        byProductRes.status === "fulfilled"
-          ? [
-              ...new Set(
-                listOf(byProductRes.value, "byProducts")
-                  .map((b) => b.byProductName)
-                  .filter(Boolean),
-              ),
-            ]
-          : [];
-      setByProducts(byProductList.length ? byProductList : BYPRODUCT_OPTIONS);
+      if (productRes.status === "fulfilled") {
+        setProducts(
+          productRes.value
+            .map((p) => ({
+              id: p._id ?? p.id,
+              name: p.productName || "",
+              totalQtyGm: p.totalQty ?? 0,
+            }))
+            .filter((p) => p.id && p.name),
+        );
+      } else {
+        toast.error("Couldn't load products");
+      }
     }
-
     loadLookups();
     return () => {
       alive = false;
     };
   }, []);
-
-  /* ------------------------------ filtering ------------------------------- */
-
-  const dateFiltered = useMemo(
-    () => sales.filter((s) => (!from || s.date >= from) && (!to || s.date <= to)),
-    [sales, from, to],
-  );
-
-  const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matches = dateFiltered.filter((s) => {
-      if (
-        q &&
-        ![
-          s.invoiceNumber,
-          s.partyName,
-          s.productName,
-          s.byProductName,
-          s.paymentType,
-          s.transaction,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(q)
-      ) {
-        return false;
-      }
-      return Object.entries(colFilters).every(
-        ([key, picked]) => picked.length === 0 || picked.includes(s[key]),
-      );
-    });
-
-    const dir = sortOrder === "asc" ? 1 : -1;
-    return [...matches].sort((a, b) => {
-      const av = sortBy === "balance" ? saleBalance(a) : a[sortBy];
-      const bv = sortBy === "balance" ? saleBalance(b) : b[sortBy];
-      if (typeof av === "number" && typeof bv === "number")
-        return (av - bv) * dir;
-      return String(av ?? "").localeCompare(String(bv ?? ""), undefined, {
-        numeric: true,
-      }) * dir;
-    });
-  }, [dateFiltered, query, colFilters, sortBy, sortOrder]);
-
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (acc, s) => {
-          acc.amount += Number(s.amount) || 0;
-          acc.received += Number(s.received) || 0;
-          return acc;
-        },
-        { amount: 0, received: 0 },
-      ),
-    [rows],
-  );
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   /* ------------------------------- handlers ------------------------------- */
 
@@ -538,8 +429,23 @@ export default function Sales() {
     setPage(1);
   }
 
-  function setColFilter(key, values) {
-    setColFilters((f) => ({ ...f, [key]: values }));
+  function clearDates() {
+    setFrom("");
+    setTo("");
+    setPeriod("custom");
+    setPage(1);
+  }
+
+  function resetFilters() {
+    const range = rangeForPeriod("this_month");
+    setPeriod("this_month");
+    setFrom(range.from);
+    setTo(range.to);
+    setPaymentType("all");
+    setQuery("");
+    setSearchOpen(false);
+    setSortBy("date");
+    setSortOrder("desc");
     setPage(1);
   }
 
@@ -566,43 +472,67 @@ export default function Sales() {
     setDrawerOpen(true);
   }
 
-  // No create/update endpoint yet — write straight to local state so the flow
-  // is demoable end to end. Swap for createSale/updateSale when they exist.
-  function handleSave() {
+  async function handleSave(e) {
+    e.preventDefault();
     setSaving(true);
-    if (mode === "add") {
-      const sale = saleFromForm(form, `local-${Date.now()}`);
-      setSales((prev) => [sale, ...prev]);
-      // Make sure the new row is visible even if it falls outside the range.
-      if (sale.date < from) setFrom(sale.date);
-      if (sale.date > to) setTo(sale.date);
-      toast.success("Sale added");
-      setPage(1);
-    } else {
-      setSales((prev) =>
-        prev.map((s) => (s.id === editingId ? saleFromForm(form, s.id) : s)),
-      );
-      toast.success("Sale updated");
+    try {
+      const payload = buildSalePayload(form);
+      if (mode === "add") {
+        await createSale(payload);
+        toast.success("Sale added");
+        setPage(1);
+      } else {
+        await updateSale(editingId, payload);
+        toast.success("Sale updated");
+      }
+      await fetchSales();
+      setDrawerOpen(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't save sale");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setDrawerOpen(false);
   }
 
   function requestDelete(sale) {
     setConfirmState({
       title: "Delete sale?",
-      message: `Delete invoice "${sale.invoiceNumber}" for "${sale.partyName}"? This can't be undone.`,
+      message: `Delete invoice "${sale.invoiceNumber}" for "${sale.partyName || "this party"}"? This can't be undone.`,
       confirmLabel: "Yes, delete",
-      onConfirm: () => {
-        setSales((prev) => prev.filter((s) => s.id !== sale.id));
-        toast.success("Sale deleted");
-      },
+      onConfirm: () => doDelete(sale),
     });
   }
 
-  const notReady = (what) =>
-    toast.info(`${what} will be available once the sales API is ready.`);
+  async function doDelete(sale) {
+    try {
+      await DeleteSale(sale.id);
+      toast.success("Sale deleted");
+      if (sales.length === 1 && page > 1) setPage((n) => n - 1);
+      else await fetchSales();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't delete sale");
+    }
+  }
 
+  // Export every sale matching the current filters, not just this page.
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const all = await fetchAll(GetSales, "sales", listParams());
+      if (!all.length) {
+        toast.info("Nothing to export.");
+        return;
+      }
+      downloadCsv(all.map(normalizeSale), fromDMY, toDMY);
+      toast.success(`Exported ${all.length} sales`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Couldn't export sales");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const notBuilt = (what) => toast.info(`${what} isn't built yet.`);
   const sortProps = { sortBy, sortOrder, onSort: toggleSort };
 
   return (
@@ -613,8 +543,7 @@ export default function Sales() {
           <div>
             <ViewSwitcher />
             <p className="mt-1 text-sm text-slate-500">
-              Every sale invoice you've raised, with what's received and what's
-              still outstanding.
+              Every sale invoice you've raised, by party, product and quantity.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -629,75 +558,80 @@ export default function Sales() {
             <IconBtn
               icon={Settings}
               label="Sale settings"
-              onClick={() => notReady("Invoice settings")}
+              onClick={() => notBuilt("Invoice settings")}
             />
           </div>
         </div>
 
         {/* Filter bar */}
         <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <span className="pl-1 pr-1 text-sm font-medium text-slate-500">
-            Filter by :
+          <span className="pl-1 pr-1 text-sm font-medium text-slate-400">
+            Filter by
           </span>
-          <PillSelect
-            ariaLabel="Period"
+          <FilterSelect
+            label="Period"
             value={period}
             onChange={changePeriod}
-            options={PERIOD_OPTIONS}
+            options={PERIOD_PRESETS}
+            displayLabel={
+              PERIOD_OPTIONS.find((o) => o.value === period)?.label
+            }
+            active={period !== "this_month"}
           />
-          <span className={`${PILL} max-w-full flex-wrap justify-center`}>
-            <Calendar size={15} className="shrink-0" />
-            <input
-              type="date"
-              aria-label="From date"
-              value={from}
-              onChange={(e) => changeDate("from", e.target.value)}
-              className="min-w-0 cursor-pointer bg-transparent text-sm font-medium text-[#1E4D96] focus:outline-none"
-            />
-            <span className="text-[#1E4D96]/60">To</span>
-            <input
-              type="date"
-              aria-label="To date"
-              value={to}
-              onChange={(e) => changeDate("to", e.target.value)}
-              className="min-w-0 cursor-pointer bg-transparent text-sm font-medium text-[#1E4D96] focus:outline-none"
-            />
-          </span>
-          <PillSelect
-            ariaLabel="Firm"
-            value={firm}
-            onChange={setFirm}
-            options={FIRM_OPTIONS}
+          <DateRangeFilter
+            from={from}
+            to={to}
+            onChange={changeDate}
+            onClear={clearDates}
           />
-          <PillSelect
-            ariaLabel="User"
-            value={user}
-            onChange={setUser}
-            options={USER_OPTIONS}
+          <FilterSelect
+            label="Payment"
+            value={paymentType}
+            onChange={(v) => {
+              setPaymentType(v);
+              setPage(1);
+            }}
+            options={PAYMENT_FILTER_OPTIONS}
+            active={paymentType !== "all"}
           />
+          {filtersDirty && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="ml-auto inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X size={14} /> Reset
+            </button>
+          )}
         </div>
 
         {/* Summary */}
         <div className="mb-5">
-          <div className="w-full rounded-2xl border border-[#DCE6F5] bg-gradient-to-br from-[#F4F7FD] to-white p-4 shadow-sm sm:max-w-sm">
-            <p className="text-sm text-slate-500">Total Sales Amount</p>
-            <p className="mt-0.5 text-2xl font-bold text-slate-900">
-              {formatINR(totals.amount)}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-              <span>
-                Received:{" "}
-                <span className="font-semibold text-emerald-600">
-                  {formatINR(totals.received)}
+          <div className="flex w-full items-center gap-4 rounded-2xl border border-[#DCE6F5] bg-gradient-to-br from-[#F4F7FD] to-white p-4 shadow-sm sm:max-w-sm">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+              <Boxes size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm text-slate-500">Total Quantity Sold</p>
+              <p className="mt-0.5 text-2xl font-bold text-slate-900">
+                {gmToKgDisplay(summary.totalQuantity || 0)}{" "}
+                <span className="text-base font-semibold text-slate-500">
+                  kg
                 </span>
-              </span>
-              <span className="hidden h-3 w-px bg-slate-300 sm:inline-block" />
-              <span>
-                Balance:{" "}
-                <span className="font-semibold text-rose-600">
-                  {formatINR(totals.amount - totals.received)}
+              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                <span>
+                  Invoices:{" "}
+                  <span className="font-semibold text-slate-700">{total}</span>
                 </span>
-              </span>
+                <span className="hidden h-3 w-px bg-slate-300 sm:inline-block" />
+                <span>
+                  Products:{" "}
+                  <span className="font-semibold text-slate-700">
+                    {summary.totalProductTypes ?? 0}
+                  </span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -708,7 +642,7 @@ export default function Sales() {
             <h2 className="text-base font-semibold text-slate-900">
               Transactions
               <span className="ml-2 text-xs font-medium text-slate-400">
-                {rows.length} {rows.length === 1 ? "entry" : "entries"}
+                {total} {total === 1 ? "entry" : "entries"}
               </span>
             </h2>
             <div className="flex items-center gap-1">
@@ -721,12 +655,9 @@ export default function Sales() {
                   <input
                     autoFocus
                     value={query}
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      setPage(1);
-                    }}
+                    onChange={(e) => setQuery(e.target.value)}
                     onBlur={() => !query && setSearchOpen(false)}
-                    placeholder="Search invoice, party…"
+                    placeholder="Search invoice, party, product…"
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-8 text-sm transition-colors focus:border-[#1E4D96] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30"
                   />
                   {query && (
@@ -753,39 +684,50 @@ export default function Sales() {
               <IconBtn
                 icon={BarChart3}
                 label="Sales graph"
-                onClick={() => notReady("The sales graph")}
+                onClick={() => notBuilt("The sales graph")}
               />
               <IconBtn
-                icon={FileSpreadsheet}
+                icon={exporting ? Loader2 : FileSpreadsheet}
                 label="Export to Excel"
-                className="hover:text-emerald-600"
-                onClick={() => {
-                  if (!rows.length) return toast.info("Nothing to export.");
-                  downloadCsv(rows, from, to);
-                  toast.success("Exported to CSV");
-                }}
+                className={`hover:text-emerald-600 ${exporting ? "animate-spin" : ""}`}
+                onClick={exporting ? () => {} : handleExport}
               />
               <IconBtn
                 icon={Printer}
                 label="Print list"
-                onClick={() => notReady("Printing")}
+                onClick={() => notBuilt("Printing")}
               />
             </div>
           </div>
 
-          {pageRows.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <Loader2 size={22} className="animate-spin" />
+            </div>
+          ) : listError ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center text-rose-500">
+              <p className="text-sm">{listError}</p>
+              <button
+                type="button"
+                onClick={fetchSales}
+                className="mt-2 font-medium text-[#1E4D96] hover:underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : sales.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
               <Inbox size={32} className="mb-2" />
               <p className="text-sm">
-                {sales.length === 0
-                  ? "No sales yet. Add your first one."
-                  : "No transactions match these filters."}
+                {debouncedQuery || paymentType !== "all"
+                  ? "No sales match these filters."
+                  : "No sales in this period yet. Add your first one."}
               </p>
             </div>
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px] text-sm">
+                <table className="w-full min-w-[980px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <Th label="Date" field="date" {...sortProps} />
@@ -794,39 +736,17 @@ export default function Sales() {
                         field="invoiceNumber"
                         {...sortProps}
                       />
-                      <Th label="Party Name" field="partyName" {...sortProps}>
-                        <ColumnFilter
-                          label="party"
-                          options={distinct(dateFiltered, "partyName")}
-                          selected={colFilters.partyName}
-                          onChange={(v) => setColFilter("partyName", v)}
-                        />
-                      </Th>
-                      <Th label="Transaction">
-                        <ColumnFilter
-                          label="transaction"
-                          options={distinct(dateFiltered, "transaction")}
-                          selected={colFilters.transaction}
-                          onChange={(v) => setColFilter("transaction", v)}
-                        />
-                      </Th>
-                      <Th label="Payment Type">
-                        <ColumnFilter
-                          label="payment type"
-                          options={distinct(dateFiltered, "paymentType")}
-                          selected={colFilters.paymentType}
-                          onChange={(v) => setColFilter("paymentType", v)}
-                        />
-                      </Th>
+                      <Th label="Party Name" />
+                      <Th label="Product" />
+                      <Th label="Transaction" />
                       <Th
-                        label="Amount"
-                        field="amount"
-                        align="right"
+                        label="Payment Type"
+                        field="paymentType"
                         {...sortProps}
                       />
                       <Th
-                        label="Balance"
-                        field="balance"
+                        label="Quantity"
+                        field="quantity"
                         align="right"
                         {...sortProps}
                       />
@@ -836,74 +756,62 @@ export default function Sales() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {pageRows.map((s) => {
-                      const balance = saleBalance(s);
-                      const item = [s.productName, s.byProductName]
-                        .filter(Boolean)
-                        .join(" · ");
-                      return (
-                        <tr key={s.id} className="hover:bg-slate-50/70">
-                          <td className="whitespace-nowrap px-4 py-3 text-slate-500">
-                            {isoToDMY(s.date)}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-slate-700">
-                            {s.invoiceNumber || "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="font-medium text-[#1E4D96]">
-                              {s.partyName || "—"}
+                    {sales.map((s) => (
+                      <tr key={s.id} className="hover:bg-slate-50/70">
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-500">
+                          {s.date || "—"}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-700">
+                          {s.invoiceNumber || "—"}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-[#1E4D96]">
+                          {s.partyName || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-slate-700">
+                            {s.productName || "—"}
+                          </span>
+                          {s.productSize && (
+                            <span className="block text-xs text-slate-400">
+                              Size {s.productSize}
                             </span>
-                            {item && (
-                              <span className="block text-xs text-slate-400">
-                                {item}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            {s.transaction}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            {s.paymentType || "—"}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-800">
-                            {formatINR(s.amount)}
-                          </td>
-                          <td
-                            className={`whitespace-nowrap px-4 py-3 text-right font-medium ${
-                              balance > 0 ? "text-rose-600" : "text-emerald-600"
-                            }`}
-                          >
-                            {formatINR(balance)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => notReady("Invoice printing")}
-                                aria-label={`Print invoice ${s.invoiceNumber}`}
-                                title="Print"
-                                className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
-                              >
-                                <Printer size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => notReady("Sharing")}
-                                aria-label={`Share invoice ${s.invoiceNumber}`}
-                                title="Share"
-                                className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
-                              >
-                                <Share2 size={15} />
-                              </button>
-                              <RowMenu
-                                onEdit={() => openEdit(s)}
-                                onDelete={() => requestDelete(s)}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">Sale</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {paymentTypeLabel(s.paymentType)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-800">
+                          {gmToKgDisplay(s.quantity)} kg
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => notBuilt("Invoice printing")}
+                              aria-label={`Print invoice ${s.invoiceNumber}`}
+                              title="Print"
+                              className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                            >
+                              <Printer size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => notBuilt("Sharing")}
+                              aria-label={`Share invoice ${s.invoiceNumber}`}
+                              title="Share"
+                              className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                            >
+                              <Share2 size={15} />
+                            </button>
+                            <RowMenu
+                              onEdit={() => openEdit(s)}
+                              onDelete={() => requestDelete(s)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -911,12 +819,12 @@ export default function Sales() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
                   <span>
-                    Page {safePage} of {totalPages}
+                    Page {page} of {totalPages}
                   </span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      disabled={safePage <= 1}
+                      disabled={page <= 1}
                       onClick={() => setPage((n) => Math.max(1, n - 1))}
                       aria-label="Previous page"
                       className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
@@ -925,10 +833,8 @@ export default function Sales() {
                     </button>
                     <button
                       type="button"
-                      disabled={safePage >= totalPages}
-                      onClick={() =>
-                        setPage((n) => Math.min(totalPages, n + 1))
-                      }
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
                       aria-label="Next page"
                       className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
@@ -950,7 +856,6 @@ export default function Sales() {
         saving={saving}
         partyOptions={parties}
         productOptions={products}
-        byProductOptions={byProducts}
         onClose={() => setDrawerOpen(false)}
         onSubmit={handleSave}
       />
