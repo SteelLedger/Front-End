@@ -53,7 +53,7 @@ const normalizeProduct = (raw) => ({
 const normalizeByProduct = (raw) => ({
   id: raw.slug,
   byProductName: raw.byProductName || "—",
-  slug: raw.slug || "—",
+  rawMaterialName: raw.rawMaterialName || "",
   totalQtyGm: raw.totalQty ?? 0,
   status: raw.status || (Number(raw.totalQty) > 0 ? "in_stock" : "out_of_stock"),
 });
@@ -86,13 +86,35 @@ const BYPRODUCT_COLUMNS = [
   {
     label: "Byproduct",
     sortField: "byProductName",
+    width: "w-1/2",
     render: (r) => (
-      <span className="font-medium text-slate-800">{r.byProductName}</span>
+      <span
+        className="block truncate"
+        title={
+          r.rawMaterialName
+            ? `${r.byProductName} (from ${r.rawMaterialName})`
+            : r.byProductName
+        }
+      >
+        <span className="font-medium text-slate-800">{r.byProductName}</span>
+        {r.rawMaterialName && (
+          <span className="ml-1.5 text-slate-400">({r.rawMaterialName})</span>
+        )}
+      </span>
     ),
   },
-  { label: "Slug", sortField: "slug", render: (r) => r.slug },
-  { label: "Total Qty", sortField: "totalQty", render: qtyCell },
-  { label: "Status", sortField: null, render: (r) => statusBadge(r.status) },
+  {
+    label: "Total Qty",
+    sortField: "totalQty",
+    width: "w-1/4",
+    render: qtyCell,
+  },
+  {
+    label: "Status",
+    sortField: null,
+    width: "w-1/4",
+    render: (r) => statusBadge(r.status),
+  },
 ];
 
 const productStats = (s) => [
@@ -259,7 +281,7 @@ export default function ProductInventory() {
             normalize={normalizeByProduct}
             columns={BYPRODUCT_COLUMNS}
             statCards={byproductStats}
-            searchPlaceholder="Search byproduct name or slug"
+            searchPlaceholder="Search byproduct or raw material"
           />
         )}
       </div>

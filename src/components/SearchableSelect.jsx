@@ -19,6 +19,9 @@ export default function SearchableSelect({
   inputRef,
   invalid = false,
   allowCustom = true,
+  // What the list holds, for the empty/hint copy ("supplier", "product", …).
+  noun = "option",
+  emptyText,
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -85,7 +88,7 @@ export default function SearchableSelect({
           setOpen((o) => !o);
           ref.current?.focus();
         }}
-        aria-label="Toggle suppliers"
+        aria-label={`Toggle ${noun} list`}
         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
       >
         <ChevronDown
@@ -102,7 +105,7 @@ export default function SearchableSelect({
                 ? allowCustom
                   ? `No match — “${value.trim()}” will be added as new`
                   : "No matches"
-                : "No suppliers yet"}
+                : (emptyText ?? `No ${noun}s yet`)}
             </li>
           ) : (
             filtered.map((o) => {
@@ -128,7 +131,7 @@ export default function SearchableSelect({
           )}
           {allowCustom && value.trim() && !hasExact && filtered.length > 0 && (
             <li className="border-t border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
-              Type to add a new supplier
+              Type to add a new {noun}
             </li>
           )}
         </ul>

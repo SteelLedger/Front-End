@@ -11,6 +11,7 @@ import Parties from "../pages/Parties";
 import Purchase from "../pages/Purchase";
 import Sales from "../pages/Sales";
 import Inventory from "../pages/Inventory";
+import RawMaterialPurchases from "../pages/RawMaterialPurchases";
 import Product from "../pages/Product";
 import ProductInventory from "../pages/ProductInventory";
 import ComingSoon from "../pages/ComingSoon";
@@ -56,6 +57,11 @@ const router = createBrowserRouter([
           {
             path: "/inventory",
             element: <Inventory />,
+          },
+          // Purchases behind one raw-material inventory row.
+          {
+            path: "/inventory/:id",
+            element: <RawMaterialPurchases />,
           },
           // Redirect the old Items path to the new Product page.
           {

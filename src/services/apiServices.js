@@ -71,9 +71,18 @@ export const GetTransactionWithPartyAndPurchase = (
 
 /* -------------------------------- Purchases -------------------------------- */
 
-export const GetPurchases = ({ search, sortBy, sortOrder, page, limit } = {}) => {
+export const GetPurchases = ({
+  search,
+  rawMaterialId,
+  sortBy,
+  sortOrder,
+  page,
+  limit,
+} = {}) => {
   const qs = new URLSearchParams();
   if (search) qs.append("search", search);
+  // Narrows the list to one raw-material inventory row.
+  if (rawMaterialId) qs.append("rawMaterialId", rawMaterialId);
   if (sortBy) qs.append("sortBy", sortBy);
   if (sortOrder) qs.append("sortOrder", sortOrder);
   if (page) qs.append("page", page);
@@ -154,7 +163,7 @@ export const DeleteProduction = (id) => {
 /**
  * Sales list. `fromDate` / `toDate` are DD/MM/YYYY; `paymentType` is one of
  * all | cash | credit | cheque | upi | bank_transfer; `sortBy` is one of
- * date | invoiceNumber | quantity | paymentType | createdAt.
+ * date | invoiceNumber | paymentType | createdAt.
  */
 export const GetSales = ({
   search,

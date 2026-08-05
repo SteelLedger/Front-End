@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import {
   Search,
   X,
@@ -305,8 +306,14 @@ export default function Inventory() {
                   <tbody className="divide-y divide-slate-100">
                     {items.map((g) => (
                       <tr key={g.id} className="hover:bg-slate-50/70">
-                        <td className="py-3 px-4 font-medium text-slate-800 whitespace-nowrap">
-                          {dash(g.rawMaterialName)}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <Link
+                            to={`/inventory/${g.id}`}
+                            className="font-medium text-[#1E4D96] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 rounded"
+                            title={`View purchases for ${g.rawMaterialName}`}
+                          >
+                            {dash(g.rawMaterialName)}
+                          </Link>
                         </td>
                         <td className="py-3 px-4 text-slate-600">
                           {dash(g.size)}

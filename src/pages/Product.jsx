@@ -76,10 +76,18 @@ function buildProductionPayload(form) {
       qty: kgToGm(b.qty),
     }))
     .filter((b) => b.byProductName && b.qty > 0);
+
+  // productSize / productQty are an optional pair — omit both on a
+  // byproduct-only run rather than sending "" and 0, which would read as
+  // "size set, quantity missing" to the API.
+  const size = String(form.productSize).trim();
+  const hasProduct = size !== "" && Number(form.howMany) > 0;
+
   return {
     rawMaterialId: form.rawMaterialId,
-    productSize: String(form.productSize).trim(),
-    productQty: kgToGm(form.howMany),
+    ...(hasProduct
+      ? { productSize: size, productQty: kgToGm(form.howMany) }
+      : {}),
     wasteQty: kgToGm(form.difference),
     productionDate: dateToISO(form.productionDate),
     byProducts,

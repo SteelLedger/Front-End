@@ -109,13 +109,34 @@ export default function ProductionDrawer({
     (Number(formState.difference) || 0);
   const remainingKg = sheetKg - usedKg;
 
+  // A run can produce a product, byproducts, or both. Mirrors the API:
+  // productSize and productQty are optional but go together, and when neither
+  // is given at least one byproduct is required.
+  const sizeEntered = String(formState.productSize).trim() !== "";
+  const qtyEntered = Number(formState.howMany) > 0;
+  const hasProduct = sizeEntered && qtyEntered;
+  const productHalfDone = sizeEntered !== qtyEntered;
+  const hasByproduct = (formState.byproducts || []).some(
+    (b) =>
+      (b.name === "Other" ? (b.customName || "").trim() : b.name) &&
+      Number(b.qty) > 0,
+  );
+
   const canSubmit =
     !!formState.rawMaterialId &&
-    String(formState.productSize).trim() !== "" &&
+    !!formState.productionDate &&
     !sizeInvalid &&
-    String(formState.howMany).trim() !== "" &&
-    Number(formState.howMany) > 0 &&
-    !!formState.productionDate;
+    !productHalfDone &&
+    (hasProduct || hasByproduct);
+
+  // Why the submit button is off — a silently disabled button is a dead end.
+  const blockedReason = !formState.rawMaterialId
+    ? "Select a sheet to cut from."
+    : productHalfDone
+      ? "Product size and quantity go together — fill both, or clear both to record byproducts only."
+      : !hasProduct && !hasByproduct
+        ? "Add a product, or at least one byproduct."
+        : "";
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -200,13 +221,16 @@ export default function ProductionDrawer({
 
           {/* Product size */}
           <div>
-            <Field label="Product Size" required>
+            <Field
+              label="Product Size"
+              info="Leave the product fields blank to record a byproduct-only run."
+            >
               <input
                 value={formState.productSize}
                 onChange={(e) => set({ productSize: e.target.value })}
                 placeholder={maxSize != null ? `Max ${maxSize}` : "e.g. 101"}
                 className={`${FIELD} ${
-                  sizeInvalid
+                  sizeInvalid || (productHalfDone && !sizeEntered)
                     ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
                     : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
                 }`}
@@ -228,7 +252,7 @@ export default function ProductionDrawer({
 
           {/* How many + difference */}
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Products (In kg)" required>
+            <Field label="Products (In kg)">
               <input
                 type="number"
                 inputMode="decimal"
@@ -236,7 +260,11 @@ export default function ProductionDrawer({
                 value={formState.howMany}
                 onChange={(e) => set({ howMany: e.target.value })}
                 placeholder="kg"
-                className={`${FIELD} border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30`}
+                className={`${FIELD} ${
+                  productHalfDone && !qtyEntered
+                    ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
+                    : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+                }`}
               />
             </Field>
             <Field label="Difference (In kg)" info="Waste / unaccounted.">
@@ -353,7 +381,11 @@ export default function ProductionDrawer({
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+        <div className="border-t border-slate-200">
+          {blockedReason && (
+            <p className="px-6 pt-3 text-xs text-slate-400">{blockedReason}</p>
+          )}
+          <div className="flex items-center justify-end gap-3 px-6 py-4">
           <button
             type="button"
             onClick={onClose}
@@ -380,6 +412,7 @@ export default function ProductionDrawer({
                 ? "Add Product"
                 : "Update Product"}
           </button>
+          </div>
         </div>
       </div>
     </div>

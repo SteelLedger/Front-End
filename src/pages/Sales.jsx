@@ -33,6 +33,7 @@ import {
   PAYMENT_TYPES,
   rangeForPeriod,
   paymentTypeLabel,
+  byProductLabel,
   emptySaleForm,
   buildSalePayload,
   normalizeSale,
@@ -46,6 +47,7 @@ import {
   DeleteSale,
   GetParties,
   GetProducts,
+  GetByProducts,
 } from "../services/apiServices";
 
 const PAGE_SIZE = 10;
@@ -227,6 +229,31 @@ function IconBtn({ icon: Icon, label, onClick, className = "" }) {
   );
 }
 
+// How many item lines show before the row collapses the rest behind "+N more".
+const COLLAPSED_LINES = 3;
+
+/**
+ * A sale's products and byproducts as one ordered list for the Items cell.
+ * Products first, then byproducts — each carrying the kind so the row can dot
+ * them, and byproducts labelled with their source material.
+ */
+function saleLines(sale) {
+  return [
+    ...sale.products.map((p) => ({
+      key: `p-${p.id || p.name}`,
+      kind: "product",
+      label: p.name || "—",
+      quantity: p.quantity,
+    })),
+    ...sale.byProducts.map((b) => ({
+      key: `b-${b.id || b.name}`,
+      kind: "byproduct",
+      label: byProductLabel(b.name, b.rawMaterialName) || "—",
+      quantity: b.quantity,
+    })),
+  ];
+}
+
 /* --------------------------------- helpers -------------------------------- */
 
 // Page through a list endpoint and accumulate everything (bounded).
@@ -256,25 +283,36 @@ function downloadCsv(rows, fromDMY, toDMY) {
     "Date",
     "Invoice no",
     "Party Name",
-    "Product",
-    "Product Size",
+    "Item Type",
+    "Item",
+    "Size",
     "Payment Type",
     "Quantity (kg)",
   ];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const body = rows.map((r) =>
-    [
-      r.date,
-      r.invoiceNumber,
-      r.partyName,
-      r.productName,
-      r.productSize,
-      paymentTypeLabel(r.paymentType),
-      gmToKgDisplay(r.quantity),
-    ]
-      .map(cell)
-      .join(","),
-  );
+  // One row per item line — a sale with 3 items becomes 3 rows, which is what
+  // you want in a spreadsheet. Invoices with no lines still get a row.
+  const body = rows.flatMap((r) => {
+    const lines = [
+      ...r.products.map((p) => ["Product", p.name, p.size, p.quantity]),
+      ...r.byProducts.map((b) => ["Byproduct", b.name, "", b.quantity]),
+    ];
+    const source = lines.length ? lines : [["", "", "", 0]];
+    return source.map(([kind, name, size, qty]) =>
+      [
+        r.date,
+        r.invoiceNumber,
+        r.partyName,
+        kind,
+        name,
+        size,
+        paymentTypeLabel(r.paymentType),
+        gmToKgDisplay(qty),
+      ]
+        .map(cell)
+        .join(","),
+    );
+  });
   const csv = [head.map(cell).join(","), ...body].join("\r\n");
   // Leading BOM so Excel opens the UTF-8 text correctly.
   const url = URL.createObjectURL(
@@ -319,6 +357,9 @@ export default function Sales() {
   // Dropdown lookups.
   const [parties, setParties] = useState([]);
   const [products, setProducts] = useState([]);
+  const [byProducts, setByProducts] = useState([]);
+  // Which invoice has its item breakdown open.
+  const [expandedId, setExpandedId] = useState(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const fromDMY = isoToDMY(from);
@@ -370,15 +411,53 @@ export default function Sales() {
     fetchSales();
   }, [fetchSales]);
 
-  // Party + product pickers for the drawer.
+  // Party / product / byproduct pickers for the drawer.
   useEffect(() => {
     let alive = true;
     async function loadLookups() {
-      const [partyRes, productRes] = await Promise.allSettled([
+      const [partyRes, productRes, byProductRes] = await Promise.allSettled([
         fetchAll(GetParties, "parties"),
         fetchAll(GetProducts, "products"),
+        fetchAll(GetByProducts, "byProducts"),
       ]);
       if (!alive) return;
+
+      // A sale line needs `byProductInventoryId`. The documented
+      // ByProductInventoryItem exposes only `slug`, so accept whichever id the
+      // endpoint actually returns and drop rows that carry none — sending a
+      // slug where an ObjectId is expected would just 400.
+      if (byProductRes.status === "fulfilled") {
+        const raw = byProductRes.value;
+        const rows = raw.map((b) => ({
+          id: b.byProductInventoryId ?? b._id ?? b.id ?? "",
+          // Shown as "Khuniya (12X120K M8)" so the source material is visible
+          // in the picker and on the chip once it's added.
+          name: byProductLabel(b.byProductName, b.rawMaterialName),
+          totalQtyGm: b.totalQty ?? 0,
+        }));
+        const sellable = rows.filter((b) => b.id && b.name);
+        setByProducts(sellable);
+
+        if (raw.length && !sellable.length) {
+          // Say which half is missing, and dump a row so the gap is obvious.
+          const missingId = !rows.some((b) => b.id);
+          console.warn(
+            "[sales] byproducts loaded but none are sellable.",
+            `\nFields on the first row: ${Object.keys(raw[0]).join(", ")}`,
+            `\nNeeded: an id (byProductInventoryId | _id | id)${missingId ? " — MISSING" : " — present"}`,
+            `\nand byProductName${rows.some((b) => b.name) ? " — present" : " — MISSING"}`,
+            "\nFirst row:",
+            raw[0],
+          );
+          toast.error(
+            missingId
+              ? "Byproducts can't be sold yet — /by-products returns no id per row (see console)."
+              : "Byproducts can't be sold — rows have no byProductName (see console).",
+          );
+        }
+      } else {
+        toast.error("Couldn't load byproducts");
+      }
 
       if (partyRes.status === "fulfilled") {
         setParties(
@@ -472,11 +551,15 @@ export default function Sales() {
     setDrawerOpen(true);
   }
 
-  async function handleSave(e) {
+  // `submitted` is the drawer's resolved form — it folds in any line still
+  // sitting in the composer, which our own `form` state hasn't caught up to yet.
+  async function handleSave(e, submitted) {
     e.preventDefault();
+    const f = submitted ?? form;
+
     setSaving(true);
     try {
-      const payload = buildSalePayload(form);
+      const payload = buildSalePayload(f);
       if (mode === "add") {
         await createSale(payload);
         toast.success("Sale added");
@@ -628,7 +711,14 @@ export default function Sales() {
                 <span>
                   Products:{" "}
                   <span className="font-semibold text-slate-700">
-                    {summary.totalProductTypes ?? 0}
+                    {gmToKgDisplay(summary.totalProductQty || 0)} kg
+                  </span>
+                </span>
+                <span className="hidden h-3 w-px bg-slate-300 sm:inline-block" />
+                <span>
+                  Byproducts:{" "}
+                  <span className="font-semibold text-slate-700">
+                    {gmToKgDisplay(summary.totalByProductQty || 0)} kg
                   </span>
                 </span>
               </div>
@@ -639,11 +729,24 @@ export default function Sales() {
         {/* Transactions */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
-            <h2 className="text-base font-semibold text-slate-900">
+            <h2 className="flex flex-wrap items-baseline gap-x-3 text-base font-semibold text-slate-900">
               Transactions
-              <span className="ml-2 text-xs font-medium text-slate-400">
+              <span className="text-xs font-medium text-slate-400">
                 {total} {total === 1 ? "entry" : "entries"}
               </span>
+              {/* Explains the dots against each item line. */}
+              {sales.length > 0 && (
+                <span className="flex items-center gap-3 text-xs font-medium text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#1E4D96]" />
+                    Product
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                    Byproduct
+                  </span>
+                </span>
+              )}
             </h2>
             <div className="flex items-center gap-1">
               {searchOpen || query ? (
@@ -727,7 +830,7 @@ export default function Sales() {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-sm">
+                <table className="w-full min-w-[1060px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <Th label="Date" field="date" {...sortProps} />
@@ -737,27 +840,29 @@ export default function Sales() {
                         {...sortProps}
                       />
                       <Th label="Party Name" />
-                      <Th label="Product" />
+                      <Th label="Items" />
                       <Th label="Transaction" />
                       <Th
                         label="Payment Type"
                         field="paymentType"
                         {...sortProps}
                       />
-                      <Th
-                        label="Quantity"
-                        field="quantity"
-                        align="right"
-                        {...sortProps}
-                      />
+                      {/* Not sortable: a multi-item sale has no single quantity,
+                          and the API dropped `quantity` from its sortBy enum. */}
+                      <Th label="Quantity" align="right" />
                       <th className="w-32 px-4 py-3 text-right font-semibold">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {sales.map((s) => (
-                      <tr key={s.id} className="hover:bg-slate-50/70">
+                    {sales.map((s) => {
+                      const lines = saleLines(s);
+                      const open = expandedId === s.id;
+                      const shown = open ? lines : lines.slice(0, COLLAPSED_LINES);
+                      const hidden = lines.length - shown.length;
+                      return (
+                      <tr key={s.id} className="align-top hover:bg-slate-50/70">
                         <td className="whitespace-nowrap px-4 py-3 text-slate-500">
                           {s.date || "—"}
                         </td>
@@ -768,13 +873,53 @@ export default function Sales() {
                           {s.partyName || "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-slate-700">
-                            {s.productName || "—"}
-                          </span>
-                          {s.productSize && (
-                            <span className="block text-xs text-slate-400">
-                              Size {s.productSize}
-                            </span>
+                          {lines.length === 0 ? (
+                            <span className="text-slate-400">—</span>
+                          ) : (
+                            <div className="min-w-[15rem] space-y-1">
+                              {shown.map((l) => (
+                                <div
+                                  key={l.key}
+                                  className="flex items-baseline justify-between gap-3"
+                                >
+                                  <span className="flex min-w-0 items-baseline gap-1.5">
+                                    <span
+                                      title={
+                                        l.kind === "product"
+                                          ? "Product"
+                                          : "Byproduct"
+                                      }
+                                      className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                                        l.kind === "product"
+                                          ? "bg-[#1E4D96]"
+                                          : "bg-violet-500"
+                                      }`}
+                                    />
+                                    <span
+                                      className="truncate text-slate-700"
+                                      title={l.label}
+                                    >
+                                      {l.label}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 whitespace-nowrap font-medium text-slate-600">
+                                    {gmToKgDisplay(l.quantity)} kg
+                                  </span>
+                                </div>
+                              ))}
+                              {(hidden > 0 || open) && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedId(open ? null : s.id)
+                                  }
+                                  aria-expanded={open}
+                                  className="text-xs font-semibold text-[#1E4D96] hover:underline"
+                                >
+                                  {open ? "Show less" : `+${hidden} more`}
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-slate-600">Sale</td>
@@ -782,7 +927,7 @@ export default function Sales() {
                           {paymentTypeLabel(s.paymentType)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-800">
-                          {gmToKgDisplay(s.quantity)} kg
+                          {gmToKgDisplay(s.totalQuantity)} kg
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-0.5">
@@ -811,7 +956,8 @@ export default function Sales() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -856,6 +1002,7 @@ export default function Sales() {
         saving={saving}
         partyOptions={parties}
         productOptions={products}
+        byProductOptions={byProducts}
         onClose={() => setDrawerOpen(false)}
         onSubmit={handleSave}
       />

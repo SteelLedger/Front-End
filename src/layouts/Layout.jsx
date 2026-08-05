@@ -49,15 +49,33 @@ const PAGE_SUBTITLES = {
   "/settings": "Manage your account and preferences",
 };
 
+/**
+ * Nav matching. A detail route (`/inventory/<id>`) has to keep lighting up its
+ * parent item, so a path also matches anything nested under it. `/product`
+ * deliberately does NOT match `/product-inventory` — only a `/` boundary counts.
+ */
+function matchesPath(pathname, path) {
+  return !!path && (pathname === path || pathname.startsWith(`${path}/`));
+}
+
 function getActiveLabel(pathname) {
   for (const { items } of NAV_SECTIONS) {
     for (const item of items) {
-      if (item.path === pathname) return item.label;
-      const child = item.children?.find((c) => c.path === pathname);
+      if (matchesPath(pathname, item.path)) return item.label;
+      const child = item.children?.find((c) => matchesPath(pathname, c.path));
       if (child) return child.label;
     }
   }
   return "Dashboard";
+}
+
+/** Subtitle for the current route, falling back to the closest parent's. */
+function getSubtitle(pathname) {
+  if (PAGE_SUBTITLES[pathname]) return PAGE_SUBTITLES[pathname];
+  const parent = Object.keys(PAGE_SUBTITLES)
+    .filter((p) => matchesPath(pathname, p))
+    .sort((a, b) => b.length - a.length)[0];
+  return parent ? PAGE_SUBTITLES[parent] : undefined;
 }
 
 export default function Layout() {
@@ -73,7 +91,7 @@ export default function Layout() {
     const open = {};
     NAV_SECTIONS.forEach((s) =>
       s.items.forEach((it) => {
-        if (it.children?.some((c) => c.path === location.pathname)) {
+        if (it.children?.some((c) => matchesPath(location.pathname, c.path))) {
           open[it.label] = true;
         }
       }),
@@ -109,7 +127,7 @@ export default function Layout() {
   };
 
   const activeLabel = getActiveLabel(location.pathname);
-  const subtitle = PAGE_SUBTITLES[location.pathname];
+  const subtitle = getSubtitle(location.pathname);
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
@@ -187,8 +205,8 @@ export default function Layout() {
 
                 // Expandable group (e.g. Production -> Raw Material, Product).
                 if (children) {
-                  const childActive = children.some(
-                    (c) => c.path === location.pathname,
+                  const childActive = children.some((c) =>
+                    matchesPath(location.pathname, c.path),
                   );
                   const isOpen = !!openMenus[label];
                   return (
@@ -232,7 +250,10 @@ export default function Layout() {
                       {!collapsed && isOpen && (
                         <div className="ml-5 mb-1 border-l border-white/10 pl-2">
                           {children.map((c) => {
-                            const active = location.pathname === c.path;
+                            const active = matchesPath(
+                              location.pathname,
+                              c.path,
+                            );
                             return (
                               <button
                                 key={c.label}
@@ -256,7 +277,7 @@ export default function Layout() {
                   );
                 }
 
-                const active = location.pathname === path;
+                const active = matchesPath(location.pathname, path);
                 return (
                   <button
                     key={label}

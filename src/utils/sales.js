@@ -20,11 +20,23 @@ export function paymentTypeLabel(value) {
   return PAYMENT_TYPES.find((p) => p.value === value)?.label || value || "—";
 }
 
+/**
+ * How a byproduct reads everywhere it's picked or listed: "Khuniya (10X120P M5)".
+ * The same byproduct name can come off different raw materials, so the source
+ * is what tells two otherwise identical entries apart.
+ */
+export function byProductLabel(name, rawMaterialName) {
+  const base = (name || "").trim();
+  const from = (rawMaterialName || "").trim();
+  if (!base) return from ? `(${from})` : "";
+  return from ? `${base} (${from})` : base;
+}
+
 // Fields GET /sales will sort on — anything else has to stay unsorted.
+// `quantity` dropped out when sales went multi-item: a sale no longer has one.
 export const SORTABLE_FIELDS = [
   "date",
   "invoiceNumber",
-  "quantity",
   "paymentType",
   "createdAt",
 ];
@@ -119,61 +131,130 @@ export function formatDateRange(fromISO, toISO) {
   return `${formatISODate(fromISO)} – ${formatISODate(toISO)}`;
 }
 
+/** One item line on a sale. `id` is a productId or a byproduct slug. */
+export function emptyLine() {
+  return { id: "", name: "", qty: "" }; // qty in kg
+}
+
+/** Lines the user actually filled in — blank rows are ignored on save. */
+export const filledLines = (lines) =>
+  (lines || []).filter((l) => l.id && Number(l.qty) > 0);
+
+/** A draft line is ready to add once it has both an item and a quantity. */
+export const isCompleteLine = (l) => !!l?.id && Number(l?.qty) > 0;
+
+/** Something was typed but the line isn't addable yet. */
+export const isPartialLine = (l) =>
+  !isCompleteLine(l) && (!!l?.id || String(l?.qty ?? "").trim() !== "");
+
+export const linesTotalGm = (lines) =>
+  filledLines(lines).reduce((sum, l) => sum + kgToGm(l.qty), 0);
+
+/** Blank drafts for the two "add an item" composers. */
+export const emptyDraft = () => ({
+  products: emptyLine(),
+  byProducts: emptyLine(),
+});
+
 export function emptySaleForm() {
   return {
     date: todayISO(),
     invoiceNumber: "",
     partyId: "",
     partyName: "",
-    productId: "",
-    productName: "",
     paymentType: "",
-    quantity: "", // kg in the UI
+    // Committed lines only — the in-progress row lives in `draft`.
+    products: [],
+    byProducts: [],
+    draft: emptyDraft(),
     error: "",
     errorFields: [],
   };
 }
 
-/** Drawer form -> POST/PUT body. Quantity goes over the wire in grams. */
+/**
+ * Drawer form -> POST/PUT body. Quantities go over the wire in grams.
+ * Product lines carry the product-inventory ObjectId; byproduct lines carry
+ * `byProductInventoryId`. At least one line of either kind is required.
+ */
 export function buildSalePayload(f) {
   return {
     partyId: f.partyId,
     invoiceNumber: f.invoiceNumber.trim(),
     date: isoToDMY(f.date),
     paymentType: f.paymentType,
-    productId: f.productId,
-    quantity: kgToGm(f.quantity),
+    products: filledLines(f.products).map((l) => ({
+      productId: l.id,
+      quantity: kgToGm(l.qty),
+    })),
+    byProducts: filledLines(f.byProducts).map((l) => ({
+      byProductInventoryId: l.id,
+      quantity: kgToGm(l.qty),
+    })),
   };
 }
 
-/** A sale from the API -> the shape the list renders. */
+const idOf = (v) => (typeof v === "object" && v !== null ? v._id : v) ?? "";
+const sumQty = (lines) =>
+  lines.reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
+
+/** A sale from the API -> the shape the list renders. Quantities in grams. */
 export function normalizeSale(raw) {
-  const idOf = (v) => (typeof v === "object" && v !== null ? v._id : v) ?? "";
+  const products = (raw.products ?? []).map((p) => ({
+    id: idOf(p.productId),
+    name: p.productName ?? "",
+    size: p.productSize ?? "",
+    quantity: p.quantity ?? 0,
+  }));
+  const byProducts = (raw.byProducts ?? []).map((b) => ({
+    id: idOf(b.byProductInventoryId),
+    name: b.byProductName ?? "",
+    slug: b.slug ?? "",
+    rawMaterialName: b.rawMaterialName ?? "",
+    quantity: b.quantity ?? 0,
+  }));
+
+  const totalProductQty = raw.totalProductQty ?? sumQty(products);
+  const totalByProductQty = raw.totalByProductQty ?? sumQty(byProducts);
+
   return {
     id: raw._id ?? raw.id,
     invoiceNumber: raw.invoiceNumber ?? "",
     date: raw.date ?? "", // DD/MM/YYYY
     partyId: idOf(raw.partyId),
     partyName: raw.partyName ?? "",
-    productId: idOf(raw.productId),
-    productName: raw.productName ?? "",
-    productSize: raw.productSize ?? "",
     paymentType: raw.paymentType ?? "",
-    quantity: raw.quantity ?? 0, // grams
+    products,
+    byProducts,
+    totalProductQty,
+    totalByProductQty,
+    totalQuantity: totalProductQty + totalByProductQty,
   };
 }
 
 /** A normalized sale -> the drawer form (grams back to kg). */
 export function saleToForm(s) {
+  const toLine = (l) => ({
+    id: l.id ?? "",
+    name: l.name ?? "",
+    qty: l.quantity != null ? gmToKg(l.quantity) : "",
+  });
+
+  // Byproduct lines carry their source material, same as the picker does.
+  const toByProductLine = (l) => ({
+    ...toLine(l),
+    name: byProductLabel(l.name, l.rawMaterialName),
+  });
+
   return {
     date: s.date ? dmyToISO(s.date) : todayISO(),
     invoiceNumber: s.invoiceNumber || "",
     partyId: s.partyId || "",
     partyName: s.partyName || "",
-    productId: s.productId || "",
-    productName: s.productName || "",
     paymentType: s.paymentType || "",
-    quantity: s.quantity != null ? gmToKg(s.quantity) : "",
+    products: filledLines((s.products ?? []).map(toLine)),
+    byProducts: filledLines((s.byProducts ?? []).map(toByProductLine)),
+    draft: emptyDraft(),
     error: "",
     errorFields: [],
   };

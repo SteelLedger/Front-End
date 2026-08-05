@@ -216,7 +216,13 @@ export default function InventoryTab({
                 <thead>
                   <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
                     {columns.map((col) => (
-                      <th key={col.label} className="py-3 px-4 font-semibold">
+                      // The table is `table-fixed`, so these widths come from
+                      // the header row. Without them a short column set just
+                      // stretches to equal thirds and reads sparse.
+                      <th
+                        key={col.label}
+                        className={`py-3 px-4 font-semibold ${col.width ?? ""}`}
+                      >
                         {col.sortField ? (
                           <button
                             type="button"

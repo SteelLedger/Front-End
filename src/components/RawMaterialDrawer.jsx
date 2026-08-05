@@ -194,6 +194,7 @@ export default function RawMaterialDrawer({
                     placeholder="Search or select a supplier"
                     invalid={errs.includes("supplier")}
                     allowCustom={false}
+                    noun="supplier"
                   />
                 </div>
                 <button
