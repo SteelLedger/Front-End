@@ -4,6 +4,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import Login from "../auth/pages/Login";
+import ForgotPassword from "../auth/pages/ForgotPassword";
 import ProtectedRoute from "./ProtectedRoute";
 import Layout from "../layouts/Layout";
 import Dashboard from "../pages/Dashboard";
@@ -14,14 +15,22 @@ import Inventory from "../pages/Inventory";
 import RawMaterialPurchases from "../pages/RawMaterialPurchases";
 import Product from "../pages/Product";
 import ProductInventory from "../pages/ProductInventory";
+import Members from "../pages/Members";
+import Settings from "../pages/Settings";
 import ComingSoon from "../pages/ComingSoon";
 import NotFound from "../pages/NotFound";
 
 const router = createBrowserRouter([
-  // Public route
+  // Public routes
   {
     path: "/login",
     element: <Login />,
+  },
+  // Email -> OTP -> new password. The steps share one route: the OTP and the
+  // reset token only live in memory, so a deep link to a later step is dead.
+  {
+    path: "/forgot-password",
+    element: <ForgotPassword />,
   },
 
   // Root redirect
@@ -81,9 +90,15 @@ const router = createBrowserRouter([
             path: "/reports",
             element: <ComingSoon title="Reports" />,
           },
+          // Team members — admin-only in practice; the page itself shows a
+          // locked state for anyone else who reaches it by URL.
+          {
+            path: "/members",
+            element: <Members />,
+          },
           {
             path: "/settings",
-            element: <ComingSoon title="Settings" />,
+            element: <Settings />,
           },
           // 404 — any unknown path inside the app shell.
           {

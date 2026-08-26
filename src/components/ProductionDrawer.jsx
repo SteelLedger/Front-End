@@ -103,10 +103,13 @@ export default function ProductionDrawer({
     (s, b) => s + (Number(b.qty) || 0),
     0,
   );
+  // Everything that leaves the sheet: product, byproducts, balance patta
+  // (which returns to raw-material stock at a new size) and waste.
   const usedKg =
     (Number(formState.howMany) || 0) +
     sumByproductKg +
-    (Number(formState.difference) || 0);
+    (Number(formState.balancePattaQty) || 0) +
+    (Number(formState.wasteQty) || 0);
   const remainingKg = sheetKg - usedKg;
 
   // A run can produce a product, byproducts, or both. Mirrors the API:
@@ -114,8 +117,25 @@ export default function ProductionDrawer({
   // is given at least one byproduct is required.
   const sizeEntered = String(formState.productSize).trim() !== "";
   const qtyEntered = Number(formState.howMany) > 0;
-  const hasProduct = sizeEntered && qtyEntered;
-  const productHalfDone = sizeEntered !== qtyEntered;
+  const bundlesEntered = Number(formState.productBundles) > 0;
+  // The API takes size, quantity and bundles as one unit — all or nothing.
+  const productParts = [sizeEntered, qtyEntered, bundlesEntered];
+  const hasProduct = productParts.every(Boolean);
+  const productHalfDone = productParts.some(Boolean) && !hasProduct;
+
+  // Balance patta size and quantity likewise go together.
+  const balanceSizeEntered = String(formState.balancePattaSize).trim() !== "";
+  const balanceQtyEntered = Number(formState.balancePattaQty) > 0;
+  const balanceHalfDone = balanceSizeEntered !== balanceQtyEntered;
+
+  // The backend names the balance-patta row from this size plus the source
+  // sheet's point and grade — show it so a typo is visible before saving.
+  const balancePattaName =
+    balanceSizeEntered && selectedSheet
+      ? `${String(formState.balancePattaSize).trim()}X${selectedSheet.point ?? ""} ${selectedSheet.grade ?? ""}`
+          .trim()
+          .toUpperCase()
+      : "";
   const hasByproduct = (formState.byproducts || []).some(
     (b) =>
       (b.name === "Other" ? (b.customName || "").trim() : b.name) &&
@@ -127,16 +147,19 @@ export default function ProductionDrawer({
     !!formState.productionDate &&
     !sizeInvalid &&
     !productHalfDone &&
+    !balanceHalfDone &&
     (hasProduct || hasByproduct);
 
   // Why the submit button is off — a silently disabled button is a dead end.
   const blockedReason = !formState.rawMaterialId
     ? "Select a sheet to cut from."
     : productHalfDone
-      ? "Product size and quantity go together — fill both, or clear both to record byproducts only."
-      : !hasProduct && !hasByproduct
-        ? "Add a product, or at least one byproduct."
-        : "";
+      ? "Product size, quantity and bundles go together — fill all three, or clear them to record byproducts only."
+      : balanceHalfDone
+        ? "Balance patta needs both a size and a quantity."
+        : !hasProduct && !hasByproduct
+          ? "Add a product, or at least one byproduct."
+          : "";
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -250,7 +273,7 @@ export default function ProductionDrawer({
             )}
           </div>
 
-          {/* How many + difference */}
+          {/* Product quantity + bundles */}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Products (In kg)">
               <input
@@ -267,29 +290,52 @@ export default function ProductionDrawer({
                 }`}
               />
             </Field>
-            <Field label="Difference (In kg)" info="Waste / unaccounted.">
+            <Field
+              label="Product Bundles"
+              info="How many bundles this run produced. A count, not a weight."
+            >
               <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                value={formState.difference}
-                onChange={(e) => set({ difference: e.target.value })}
-                placeholder="kg"
-                className={`${FIELD} border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30`}
+                inputMode="numeric"
+                value={formState.productBundles}
+                onChange={(e) =>
+                  set({ productBundles: e.target.value.replace(/[^0-9]/g, "") })
+                }
+                placeholder="e.g. 10"
+                className={`${FIELD} ${
+                  productHalfDone && !bundlesEntered
+                    ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
+                    : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+                }`}
               />
             </Field>
           </div>
 
-          {/* Production date */}
-          <Field label="Production Date" required>
-            <input
-              type="date"
-              value={formState.productionDate}
-              max={new Date().toISOString().split("T")[0]}
-              onChange={(e) => set({ productionDate: e.target.value })}
-              className={`${FIELD} border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30`}
-            />
-          </Field>
+          {/* Waste + date */}
+          <div className="grid grid-cols-2 gap-4">
+            <Field
+              label="Waste (In kg)"
+              info="Scrap that is lost. Deducted from the sheet and not added to any stock — unlike balance patta, which goes back into raw material."
+            >
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={formState.wasteQty}
+                onChange={(e) => set({ wasteQty: e.target.value })}
+                placeholder="kg"
+                className={`${FIELD} border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30`}
+              />
+            </Field>
+            <Field label="Production Date" required>
+              <input
+                type="date"
+                value={formState.productionDate}
+                max={new Date().toISOString().split("T")[0]}
+                onChange={(e) => set({ productionDate: e.target.value })}
+                className={`${FIELD} border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30`}
+              />
+            </Field>
+          </div>
 
           {/* Remaining sheet weight */}
           {selectedSheet && (
@@ -306,6 +352,59 @@ export default function ProductionDrawer({
               </span>
             </div>
           )}
+
+          {/* Balance patta — the usable offcut that goes back to raw material */}
+          <div>
+            <p className="mb-2 flex items-center gap-1 text-sm font-semibold text-slate-800">
+              Balance Patta{" "}
+              <span className="font-normal text-slate-400">(optional)</span>
+              <InfoTip text="Sheet left over at a smaller size. It returns to raw-material stock under this size plus the source sheet's point and grade — so it can be cut again later." />
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Balance Patta Size">
+                <input
+                  value={formState.balancePattaSize}
+                  onChange={(e) =>
+                    set({
+                      balancePattaSize: e.target.value.replace(
+                        /[^a-zA-Z0-9]/g,
+                        "",
+                      ),
+                    })
+                  }
+                  placeholder="e.g. 8"
+                  className={`${FIELD} ${
+                    balanceHalfDone && !balanceSizeEntered
+                      ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
+                      : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+                  }`}
+                />
+              </Field>
+              <Field label="Balance Patta (In kg)">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  value={formState.balancePattaQty}
+                  onChange={(e) => set({ balancePattaQty: e.target.value })}
+                  placeholder="kg"
+                  className={`${FIELD} ${
+                    balanceHalfDone && !balanceQtyEntered
+                      ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
+                      : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+                  }`}
+                />
+              </Field>
+            </div>
+            {balancePattaName && (
+              <p className="mt-1.5 text-xs text-slate-400">
+                Goes to raw material:{" "}
+                <span className="font-medium text-slate-500">
+                  {balancePattaName}
+                </span>
+              </p>
+            )}
+          </div>
 
           {/* Byproducts */}
           <div>
@@ -386,32 +485,32 @@ export default function ProductionDrawer({
             <p className="px-6 pt-3 text-xs text-slate-400">{blockedReason}</p>
           )}
           <div className="flex items-center justify-end gap-3 px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-5 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            form="production-form"
-            disabled={saving || !canSubmit}
-            className="inline-flex items-center gap-2 rounded-md bg-[#1E4D96] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
-          >
-            {mode === "add" ? (
-              <Plus size={16} strokeWidth={2.5} />
-            ) : (
-              <Check size={16} strokeWidth={2.5} />
-            )}
-            {saving
-              ? mode === "add"
-                ? "Adding…"
-                : "Updating…"
-              : mode === "add"
-                ? "Add Product"
-                : "Update Product"}
-          </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-5 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="production-form"
+              disabled={saving || !canSubmit}
+              className="inline-flex items-center gap-2 rounded-md bg-[#1E4D96] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+            >
+              {mode === "add" ? (
+                <Plus size={16} strokeWidth={2.5} />
+              ) : (
+                <Check size={16} strokeWidth={2.5} />
+              )}
+              {saving
+                ? mode === "add"
+                  ? "Adding…"
+                  : "Updating…"
+                : mode === "add"
+                  ? "Add Product"
+                  : "Update Product"}
+            </button>
           </div>
         </div>
       </div>

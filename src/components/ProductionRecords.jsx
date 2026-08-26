@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import ConfirmDialog from "./ConfirmDialog";
+import { usePageHeader } from "../context/pageHeader";
 import {
   GetProductions,
   DeleteProduction,
@@ -120,7 +121,7 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
  * `onEdit(id)` opens the parent's drawer in edit mode; `reloadKey` triggers a
  * refetch after an external add/edit.
  */
-export default function ProductionRecords({ onEdit, reloadKey }) {
+export default function ProductionRecords({ onEdit, onAddProduct, reloadKey }) {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
   const [total, setTotal] = useState(0);
@@ -132,6 +133,19 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
   const [sortBy, setSortBy] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
+  // { fromDate, toDate } as DD/MM/YYYY — empty until a period is picked.
+  const [dateRange, setDateRange] = useState({});
+
+  // The Product page owns the topbar action; this only adds the date filter.
+  usePageHeader({
+    actionLabel: "Add Product",
+    onAction: onAddProduct,
+    dateFilter: true,
+    onDateChange: (range) => {
+      setDateRange(range);
+      setPage(1);
+    },
+  });
 
   const [confirmState, setConfirmState] = useState(null);
   // Byproducts viewer: { loading, productName, byProducts } | null
@@ -176,6 +190,8 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
     try {
       const res = await GetProductions({
         search: debounced,
+        fromDate: dateRange.fromDate,
+        toDate: dateRange.toDate,
         sortBy: sortBy || undefined,
         sortOrder: sortBy ? sortOrder : undefined,
         page,
@@ -191,7 +207,7 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
     } finally {
       setLoading(false);
     }
-  }, [debounced, sortBy, sortOrder, page]);
+  }, [debounced, dateRange, sortBy, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -304,7 +320,71 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Phones get cards — the table needs 760px. */}
+            <div className="divide-y divide-slate-100 xl:hidden">
+              {rows.map((r) => (
+                <div key={r.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-800">
+                        {r.productName}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">
+                        from {r.rawMaterialName} · {fmtDate(r.productionDate)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openView(r)}
+                        aria-label="View byproducts"
+                        className="rounded-md p-2.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onEdit(r.id)}
+                        aria-label="Edit production"
+                        className="rounded-md p-2.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => requestDelete(r)}
+                        aria-label="Delete production"
+                        className="rounded-md p-2.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <dl className="mt-2.5 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                    <div>
+                      <dt className="text-slate-400">Size</dt>
+                      <dd className="mt-0.5 font-semibold text-slate-700">
+                        {r.productSize || "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-400">Produced</dt>
+                      <dd className="mt-0.5 font-semibold text-slate-900">
+                        {gmToKgDisplay(r.productQtyGm)} kg
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-400">Waste</dt>
+                      <dd className="mt-0.5 font-semibold text-slate-700">
+                        {gmToKgDisplay(r.wasteQtyGm)} kg
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto xl:block">
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
-import { Plus } from "lucide-react";
 import ProductionDrawer from "../components/ProductionDrawer";
 import ProductionRecords from "../components/ProductionRecords";
 import { todayISO } from "../utils/party";
@@ -22,8 +21,13 @@ function emptyProductionForm() {
   return {
     rawMaterialId: "",
     productSize: "",
-    howMany: "", // kg
-    difference: "", // kg -> wasteQty
+    howMany: "", // kg -> productQty
+    productBundles: "", // a count, not a weight
+    wasteQty: "", // kg -> wasteQty (scrap; deducted and gone)
+    // Balance patta returns usable material to raw-material stock at a new
+    // size, so it carries its own size and is NOT waste.
+    balancePattaSize: "",
+    balancePattaQty: "", // kg
     productionDate: todayISO(),
     byproducts: [emptyByproduct()],
   };
@@ -31,7 +35,9 @@ function emptyProductionForm() {
 
 function dateToISO(d) {
   const dt = new Date(`${d}T00:00:00.000Z`);
-  return Number.isNaN(dt.getTime()) ? new Date().toISOString() : dt.toISOString();
+  return Number.isNaN(dt.getTime())
+    ? new Date().toISOString()
+    : dt.toISOString();
 }
 function isoToDateInput(iso) {
   const dt = new Date(iso);
@@ -53,13 +59,20 @@ function byproductToForm(bp) {
 // Map a production record (GET /productions/:id) back into the drawer form.
 function productionToForm(d) {
   const rmId =
-    typeof d.rawMaterialId === "object" ? d.rawMaterialId?._id : d.rawMaterialId;
+    typeof d.rawMaterialId === "object"
+      ? d.rawMaterialId?._id
+      : d.rawMaterialId;
   return {
     rawMaterialId: rmId ?? "",
     productSize: d.productSize ?? "",
     howMany: d.productQty != null ? gmToKg(d.productQty) : "",
-    difference: d.wasteQty != null ? gmToKg(d.wasteQty) : "",
-    productionDate: d.productionDate ? isoToDateInput(d.productionDate) : todayISO(),
+    productBundles: d.productBundles != null ? String(d.productBundles) : "",
+    wasteQty: d.wasteQty != null ? gmToKg(d.wasteQty) : "",
+    balancePattaSize: d.balancePattaSize ?? "",
+    balancePattaQty: d.balancePattaQty != null ? gmToKg(d.balancePattaQty) : "",
+    productionDate: d.productionDate
+      ? isoToDateInput(d.productionDate)
+      : todayISO(),
     byproducts:
       Array.isArray(d.byProducts) && d.byProducts.length
         ? d.byProducts.map(byproductToForm)
@@ -71,24 +84,40 @@ function buildProductionPayload(form) {
   const byProducts = (form.byproducts || [])
     .map((b) => ({
       ...(b._id ? { _id: b._id } : {}),
-      byProductName:
-        b.name === "Other" ? (b.customName || "").trim() : b.name,
+      byProductName: b.name === "Other" ? (b.customName || "").trim() : b.name,
       qty: kgToGm(b.qty),
     }))
     .filter((b) => b.byProductName && b.qty > 0);
 
-  // productSize / productQty are an optional pair — omit both on a
-  // byproduct-only run rather than sending "" and 0, which would read as
-  // "size set, quantity missing" to the API.
+  // productSize / productQty / productBundles are an optional TRIO — omit all
+  // three on a byproduct-only run rather than sending "" and 0, which would
+  // read as "size set, quantity missing" to the API.
   const size = String(form.productSize).trim();
-  const hasProduct = size !== "" && Number(form.howMany) > 0;
+  const hasProduct =
+    size !== "" && Number(form.howMany) > 0 && Number(form.productBundles) > 0;
+
+  // Balance patta is its own optional pair, and creates/updates a raw-material
+  // row from this size plus the source sheet's point and grade.
+  const balanceSize = String(form.balancePattaSize).trim();
+  const hasBalancePatta =
+    balanceSize !== "" && Number(form.balancePattaQty) > 0;
 
   return {
     rawMaterialId: form.rawMaterialId,
     ...(hasProduct
-      ? { productSize: size, productQty: kgToGm(form.howMany) }
+      ? {
+          productSize: size,
+          productQty: kgToGm(form.howMany),
+          productBundles: Number(form.productBundles),
+        }
       : {}),
-    wasteQty: kgToGm(form.difference),
+    ...(hasBalancePatta
+      ? {
+          balancePattaSize: balanceSize,
+          balancePattaQty: kgToGm(form.balancePattaQty),
+        }
+      : {}),
+    wasteQty: kgToGm(form.wasteQty),
     productionDate: dateToISO(form.productionDate),
     byProducts,
   };
@@ -199,27 +228,11 @@ export default function Product() {
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Product
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Cut products from raw material sheets and track byproduct stock.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={openAdd}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-          >
-            <Plus size={18} strokeWidth={2.5} />
-            Add Product
-          </button>
-        </div>
-
-        <ProductionRecords onEdit={openEdit} reloadKey={reloadKey} />
+        <ProductionRecords
+          onEdit={openEdit}
+          onAddProduct={openAdd}
+          reloadKey={reloadKey}
+        />
       </div>
 
       <ProductionDrawer

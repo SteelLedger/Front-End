@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 
 const GAP = 6;
 const EDGE = 8;
+// Overflow below this is rounding noise, not content that needs scrolling.
+const ROUNDING_SLACK = 6;
 
 /**
  * MenuPopover
@@ -24,6 +26,11 @@ export default function MenuPopover({
 }) {
   const panelRef = useRef(null);
   const [style, setStyle] = useState(null);
+  // Sub-pixel rounding (the app's 112.5% root font size makes most paddings
+  // fractional) leaves scrollHeight a few px above clientHeight even when the
+  // content plainly fits, which rendered a scrollbar on panels that needed
+  // none. Only scroll once the overflow is real.
+  const [scrollable, setScrollable] = useState(false);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -65,6 +72,14 @@ export default function MenuPopover({
     };
   }, [open, anchorRef, align, width]);
 
+  // Runs after `style` is on the element, so the box being measured is the one
+  // the user sees. Anything past the slack is genuine overflow and must scroll.
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!open || !el) return;
+    setScrollable(el.scrollHeight > el.clientHeight + ROUNDING_SLACK);
+  }, [open, style, children]);
+
   useEffect(() => {
     if (!open) return;
     function onDown(e) {
@@ -90,7 +105,9 @@ export default function MenuPopover({
       ref={panelRef}
       style={style}
       role="menu"
-      className={`z-[70] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10 ${className}`}
+      className={`z-[70] overflow-x-hidden overscroll-contain rounded-xl border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10 ${
+        scrollable ? "overflow-y-auto" : "overflow-y-hidden"
+      } ${className}`}
     >
       {children}
     </div>,

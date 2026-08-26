@@ -117,9 +117,7 @@ export default function SearchableSelect({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => pick(o)}
                     className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${
-                      selected
-                        ? "font-medium text-[#1E4D96]"
-                        : "text-slate-700"
+                      selected ? "font-medium text-[#1E4D96]" : "text-slate-700"
                     }`}
                   >
                     {o}

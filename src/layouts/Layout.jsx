@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { clearSession, getDisplayUser } from "../utils/auth";
+import { clearSession, getDisplayUser, isAdmin } from "../utils/auth";
+import { PageHeaderContext } from "../context/pageHeader";
+import DateFilterBar from "../components/DateFilterBar";
 
 // ── Nav ───────────────────────────────────────────────────────────
 const NAV_SECTIONS = [
@@ -31,6 +33,8 @@ const NAV_SECTIONS = [
     section: "More",
     items: [
       { label: "Reports", icon: ChartIcon, path: "/reports" },
+      // Every /users endpoint is admin-only, so the item is too.
+      { label: "Members", icon: TeamIcon, path: "/members", adminOnly: true },
       { label: "Settings", icon: SettingsIcon, path: "/settings" },
     ],
   },
@@ -38,7 +42,8 @@ const NAV_SECTIONS = [
 
 // Subtitle shown under the page title in the topbar, keyed by path.
 const PAGE_SUBTITLES = {
-  "/dashboard": "Good morning, Raj — here's your business at a glance",
+  "/dashboard":
+    "Material moving through the business bought, cut, sold, and what's left",
   "/parties": "All your customers and suppliers in one place",
   "/product": "Cut products from sheets and track production & byproduct stock",
   "/product-inventory": "Product stock on hand by product name",
@@ -46,7 +51,8 @@ const PAGE_SUBTITLES = {
   "/purchase": "Track purchase bills and payments made",
   "/inventory": "Raw material stock on hand by specification",
   "/reports": "Insights into your business performance",
-  "/settings": "Manage your account and preferences",
+  "/members": "Invite teammates and manage what they can access",
+  "/settings": "Your account details and sign-in security",
 };
 
 /**
@@ -101,6 +107,17 @@ export default function Layout() {
 
   // Logged-in user — merged from the stored user object and the JWT claims.
   const user = useMemo(() => getDisplayUser(), []);
+
+  // Nav minus whatever this role can't reach. Dropping a section that empties
+  // out keeps its heading from hanging over nothing.
+  const navSections = useMemo(() => {
+    const admin = isAdmin();
+    return NAV_SECTIONS.map((s) => ({
+      ...s,
+      items: s.items.filter((it) => !it.adminOnly || admin),
+    })).filter((s) => s.items.length > 0);
+  }, []);
+
   const userName = user.name;
   // Show the role under the name; fall back to the email if no role.
   const userRole = user.role || user.email || "Member";
@@ -128,6 +145,10 @@ export default function Layout() {
 
   const activeLabel = getActiveLabel(location.pathname);
   const subtitle = getSubtitle(location.pathname);
+
+  // Controls the current page hands up to the topbar (see context/pageHeader).
+  const [header, setHeader] = useState({});
+  const registerHeader = useCallback((next) => setHeader(next ?? {}), []);
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
@@ -191,7 +212,7 @@ export default function Layout() {
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar px-2 py-2">
-          {NAV_SECTIONS.map(({ section, items }) => (
+          {navSections.map(({ section, items }) => (
             <div key={section}>
               {!collapsed ? (
                 <p className="px-2 pt-4 pb-1 text-[11px] font-semibold tracking-widest uppercase text-blue-300/40 select-none">
@@ -328,6 +349,17 @@ export default function Layout() {
               ].join(" ")}
             >
               <button
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  handleNav("/settings");
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[15px] font-medium text-slate-700 hover:bg-blue-50 transition-colors"
+              >
+                <KeyIcon />
+                Change password
+              </button>
+              <div className="my-1 border-t border-slate-100" />
+              <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2 px-3 py-2 text-[15px] font-medium text-rose-600 hover:bg-rose-50 transition-colors"
               >
@@ -370,51 +402,56 @@ export default function Layout() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Topbar */}
         <header className="bg-white border-b border-slate-200 h-14 flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button
-              className="lg:hidden w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500"
+              className="lg:hidden h-10 w-10 shrink-0 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500"
               onClick={() => setMobileOpen(true)}
               aria-label="Open sidebar"
             >
               <MenuIcon />
             </button>
-            <div>
-              <h1 className="text-[18px] font-bold text-[#0A1628] leading-tight">
+            <div className="min-w-0">
+              <h1 className="truncate text-[18px] font-bold text-[#0A1628] leading-tight">
                 {activeLabel}
               </h1>
               {subtitle && (
-                <p className="text-[15px] text-slate-400 hidden sm:block leading-tight mt-0.5">
+                <p className="truncate text-[15px] text-slate-400 hidden sm:block leading-tight mt-0.5">
                   {subtitle}
                 </p>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:flex items-center gap-1.5 text-[12px] text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
-              <CalendarIcon />
-              June 2026
-            </span>
+          <div className="flex shrink-0 items-center gap-2">
+            {header.dateFilter && (
+              <DateFilterBar
+                /* Remount per route so one page's range never leaks to the next. */
+                key={location.pathname}
+                defaultPeriod={header.defaultPeriod}
+                showLabel={false}
+                showReset={false}
+                onChange={header.onDateChange}
+              />
+            )}
             <button
-              className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors relative"
-              aria-label="Notifications"
-            >
-              <BellIcon />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
-            </button>
-            <button
-              onClick={() => handleNav("/sales")}
-              className="flex items-center gap-1.5 bg-[#1E4D96] hover:bg-[#1A3F7A] text-white text-[14px] font-semibold px-3 py-2 rounded-lg transition-colors"
+              onClick={header.onAction ?? (() => handleNav("/sales"))}
+              aria-label={header.actionLabel ?? "New Sale"}
+              title={header.actionLabel ?? "New Sale"}
+              className="flex h-10 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#1E4D96] px-3 text-[14px] font-semibold text-white transition-colors hover:bg-[#1A3F7A]"
             >
               <PlusIcon />
-              <span className="hidden sm:inline">New Sale</span>
+              <span className="hidden sm:inline">
+                {header.actionLabel ?? "New Sale"}
+              </span>
             </button>
           </div>
         </header>
 
         {/* Scrollable content — each page renders here */}
         <main className="flex-1 overflow-y-auto">
-          <Outlet />
+          <PageHeaderContext.Provider value={registerHeader}>
+            <Outlet />
+          </PageHeaderContext.Provider>
         </main>
       </div>
     </div>
@@ -569,6 +606,24 @@ function ChartIcon() {
     </svg>
   );
 }
+// A person with a shield — distinct from Parties' UsersIcon, since this nav
+// item is about access rather than contacts.
+function TeamIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      width="18"
+      height="18"
+    >
+      <circle cx="8" cy="6.5" r="3" />
+      <path d="M2 17c0-3.3 2.7-6 6-6 1 0 1.9.2 2.7.6" />
+      <path d="M15.5 10.5l3 1.1v2.2c0 1.7-1.2 3.2-3 3.7-1.8-.5-3-2-3-3.7v-2.2l3-1.1z" />
+    </svg>
+  );
+}
 function SettingsIcon() {
   return (
     <svg
@@ -598,21 +653,6 @@ function MenuIcon() {
     </svg>
   );
 }
-function BellIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      width="17"
-      height="17"
-    >
-      <path d="M10 2a6 6 0 016 6c0 4 1.5 5 1.5 5h-15s1.5-1 1.5-5a6 6 0 016-6z" />
-      <path d="M8.5 17a1.5 1.5 0 003 0" />
-    </svg>
-  );
-}
 function PlusIcon() {
   return (
     <svg
@@ -627,18 +667,22 @@ function PlusIcon() {
     </svg>
   );
 }
-function CalendarIcon() {
+function KeyIcon() {
   return (
     <svg
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.6"
-      width="13"
-      height="13"
+      width="16"
+      height="16"
     >
-      <rect x="2" y="3" width="16" height="15" rx="2" />
-      <path d="M6 1v4M14 1v4M2 8h16" />
+      <circle cx="13.5" cy="6.5" r="3.5" />
+      <path
+        d="M11 9L3 17M5.5 14.5l2 2M8 12l2 2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

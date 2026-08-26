@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Calendar, ChevronDown, X } from "lucide-react";
 import MenuPopover from "./MenuPopover";
-import { formatDateRange } from "../utils/sales";
+import { formatDateRange, todayISO } from "../utils/dateRange";
 
 const DATE_INPUT =
   "date-field relative w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm " +
@@ -21,6 +21,8 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
   const active = !!(from || to);
 
   const invalid = from && to && from > to;
+  // Same rule as the compact menu: nothing past today is selectable.
+  const today = todayISO();
 
   return (
     <>
@@ -64,7 +66,7 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
             <input
               type="date"
               value={from}
-              max={to || undefined}
+              max={to || today}
               onChange={(e) => onChange("from", e.target.value)}
               className={DATE_INPUT}
             />
@@ -77,6 +79,7 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
               type="date"
               value={to}
               min={from || undefined}
+              max={today}
               onChange={(e) => onChange("to", e.target.value)}
               className={DATE_INPUT}
             />

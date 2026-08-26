@@ -41,114 +41,41 @@ export const SORTABLE_FIELDS = [
   "createdAt",
 ];
 
-export const PERIOD_OPTIONS = [
-  { value: "today", label: "Today" },
-  { value: "yesterday", label: "Yesterday" },
-  { value: "this_week", label: "This Week" },
-  { value: "this_month", label: "This Month" },
-  { value: "last_month", label: "Last Month" },
-  { value: "this_quarter", label: "This Quarter" },
-  { value: "this_year", label: "This Year" },
-  { value: "custom", label: "Custom" },
-];
-
-function iso(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/** From/to ISO dates for a period preset. `custom` keeps the user's own range. */
-export function rangeForPeriod(period) {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const day = now.getDate();
-
-  switch (period) {
-    case "today":
-      return { from: iso(now), to: iso(now) };
-    case "yesterday": {
-      const d = new Date(y, m, day - 1);
-      return { from: iso(d), to: iso(d) };
-    }
-    case "this_week": {
-      // Week starts Monday.
-      const start = new Date(y, m, day - ((now.getDay() + 6) % 7));
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      return { from: iso(start), to: iso(end) };
-    }
-    case "this_month":
-      return { from: iso(new Date(y, m, 1)), to: iso(new Date(y, m + 1, 0)) };
-    case "last_month":
-      return { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) };
-    case "this_quarter": {
-      const q = Math.floor(m / 3) * 3;
-      return { from: iso(new Date(y, q, 1)), to: iso(new Date(y, q + 3, 0)) };
-    }
-    case "this_year":
-      return { from: iso(new Date(y, 0, 1)), to: iso(new Date(y, 11, 31)) };
-    default:
-      return null;
-  }
-}
-
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
-/** "2026-08-01" -> "01 Aug 2026" */
-export function formatISODate(isoDate) {
-  if (!isoDate) return "";
-  const [y, m, d] = isoDate.split("-");
-  return `${d} ${MONTHS[Number(m) - 1] ?? m} ${y}`;
-}
-
-/** A range as one readable label for the filter chip. */
-export function formatDateRange(fromISO, toISO) {
-  if (!fromISO && !toISO) return "All dates";
-  if (!fromISO) return `Until ${formatISODate(toISO)}`;
-  if (!toISO) return `From ${formatISODate(fromISO)}`;
-  if (fromISO === toISO) return formatISODate(fromISO);
-
-  const [fy, fm, fd] = fromISO.split("-");
-  const [ty, tm, td] = toISO.split("-");
-  // Same year reads fine without repeating it on both sides.
-  if (fy === ty) {
-    return `${fd} ${MONTHS[Number(fm) - 1]} – ${td} ${MONTHS[Number(tm) - 1]} ${ty}`;
-  }
-  return `${formatISODate(fromISO)} – ${formatISODate(toISO)}`;
-}
-
-/** One item line on a sale. `id` is a productId or a byproduct slug. */
+/**
+ * One item line on a sale. `id` is a productId or a byproduct inventory id.
+ * `bundles` applies to PRODUCT lines only — the API requires it there and has
+ * no such field on by-product lines, so it stays empty for those.
+ */
 export function emptyLine() {
-  return { id: "", name: "", qty: "" }; // qty in kg
+  return { id: "", name: "", qty: "", bundles: "" }; // qty in kg
 }
 
 /** Lines the user actually filled in — blank rows are ignored on save. */
 export const filledLines = (lines) =>
   (lines || []).filter((l) => l.id && Number(l.qty) > 0);
 
-/** A draft line is ready to add once it has both an item and a quantity. */
-export const isCompleteLine = (l) => !!l?.id && Number(l?.qty) > 0;
+/**
+ * A draft line is ready to add once it has an item and a quantity — plus a
+ * bundle count on the product side, which the API requires.
+ */
+export const isCompleteLine = (l, requireBundles = false) =>
+  !!l?.id &&
+  Number(l?.qty) > 0 &&
+  (!requireBundles || Number(l?.bundles) > 0);
 
 /** Something was typed but the line isn't addable yet. */
-export const isPartialLine = (l) =>
-  !isCompleteLine(l) && (!!l?.id || String(l?.qty ?? "").trim() !== "");
+export const isPartialLine = (l, requireBundles = false) =>
+  !isCompleteLine(l, requireBundles) &&
+  (!!l?.id ||
+    String(l?.qty ?? "").trim() !== "" ||
+    (requireBundles && String(l?.bundles ?? "").trim() !== ""));
 
 export const linesTotalGm = (lines) =>
   filledLines(lines).reduce((sum, l) => sum + kgToGm(l.qty), 0);
+
+/** Bundle count across product lines. */
+export const linesTotalBundles = (lines) =>
+  filledLines(lines).reduce((sum, l) => sum + (Number(l.bundles) || 0), 0);
 
 /** Blank drafts for the two "add an item" composers. */
 export const emptyDraft = () => ({
@@ -186,6 +113,7 @@ export function buildSalePayload(f) {
     products: filledLines(f.products).map((l) => ({
       productId: l.id,
       quantity: kgToGm(l.qty),
+      bundles: Number(l.bundles) || 0,
     })),
     byProducts: filledLines(f.byProducts).map((l) => ({
       byProductInventoryId: l.id,
@@ -205,6 +133,7 @@ export function normalizeSale(raw) {
     name: p.productName ?? "",
     size: p.productSize ?? "",
     quantity: p.quantity ?? 0,
+    bundles: p.bundles ?? 0,
   }));
   const byProducts = (raw.byProducts ?? []).map((b) => ({
     id: idOf(b.byProductInventoryId),
@@ -216,6 +145,9 @@ export function normalizeSale(raw) {
 
   const totalProductQty = raw.totalProductQty ?? sumQty(products);
   const totalByProductQty = raw.totalByProductQty ?? sumQty(byProducts);
+  const totalProductBundles =
+    raw.totalProductBundles ??
+    products.reduce((sum, p) => sum + (Number(p.bundles) || 0), 0);
 
   return {
     id: raw._id ?? raw.id,
@@ -227,6 +159,7 @@ export function normalizeSale(raw) {
     products,
     byProducts,
     totalProductQty,
+    totalProductBundles,
     totalByProductQty,
     totalQuantity: totalProductQty + totalByProductQty,
   };
@@ -238,6 +171,7 @@ export function saleToForm(s) {
     id: l.id ?? "",
     name: l.name ?? "",
     qty: l.quantity != null ? gmToKg(l.quantity) : "",
+    bundles: l.bundles != null ? String(l.bundles) : "",
   });
 
   // Byproduct lines carry their source material, same as the picker does.

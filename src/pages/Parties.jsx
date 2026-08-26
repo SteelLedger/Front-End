@@ -4,7 +4,6 @@ import {
   Search,
   Printer,
   FileSpreadsheet,
-  Plus,
   Pencil,
   Phone,
   Clock,
@@ -22,10 +21,12 @@ import {
   Wallet,
   Inbox,
   Loader2,
-  StickyNote,
+  Info,
 } from "lucide-react";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import PartyFilter from "../components/PartyFilter";
+import { usePageHeader } from "../context/pageHeader";
+import NotesModal from "../components/NotesModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import {
   emptyAddress,
@@ -164,7 +165,9 @@ function normalizeParty(raw) {
     name: raw.name || "",
     phone: raw.phone || "",
     amount: signed,
-    type: signed < 0 ? "supplier" : "customer",
+    // The API's own tag. It used to be guessed from the sign of the balance,
+    // which said nothing about what the party actually is.
+    type: raw.partyType || "",
   };
 }
 
@@ -218,6 +221,7 @@ function partyToForm(d) {
   return {
     ...emptyPartyForm(),
     name: d.name || "",
+    partyType: d.partyType || "",
     phone: d.phone || "",
     email: d.email || "",
     billingName: d.billingName || "",
@@ -314,10 +318,11 @@ function SortIcon({ active, dir }) {
   );
 }
 
-function IconButton({ children, title, colorClass }) {
+function IconButton({ children, title, colorClass, onClick }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       title={title}
       aria-label={title}
       className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50 ${colorClass}`}
@@ -356,6 +361,19 @@ function Parties() {
   const [sortKey, setSortKey] = useState(null); // "name" | "amount"
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
+  // { fromDate, toDate } as DD/MM/YYYY over createdAt — empty until picked.
+  const [dateRange, setDateRange] = useState({});
+
+  // Date filter and "Add Party" both live in the topbar.
+  usePageHeader({
+    actionLabel: "Add Party",
+    onAction: () => openAddModal(),
+    dateFilter: true,
+    onDateChange: (range) => {
+      setDateRange(range);
+      setPage(1);
+    },
+  });
 
   const [selectedId, setSelectedId] = useState(null);
 
@@ -372,8 +390,7 @@ function Parties() {
 
   // Notes of the selected party (fetched from the detail endpoint).
   const [selectedNotes, setSelectedNotes] = useState([]);
-  const [notesOpen, setNotesOpen] = useState(false); // mobile notes popover
-  const notesRef = useRef(null);
+  const [notesOpen, setNotesOpen] = useState(false); // notes modal
 
   // Transactions (per-party, server-driven)
   const [txns, setTxns] = useState([]);
@@ -406,6 +423,8 @@ function Parties() {
       const res = await GetParties({
         search: debouncedQuery,
         filter: filterValues,
+        fromDate: dateRange.fromDate,
+        toDate: dateRange.toDate,
         sortBy: sortKey ? SORT_FIELD[sortKey] : undefined,
         sortOrder: sortKey ? sortDir : undefined,
         page,
@@ -427,7 +446,7 @@ function Parties() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, filterValues, sortKey, sortDir, page]);
+  }, [debouncedQuery, filterValues, dateRange, sortKey, sortDir, page]);
 
   useEffect(() => {
     // Legitimate data-fetch on mount / when query params change.
@@ -491,17 +510,6 @@ function Parties() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSelectedNotes();
   }, [fetchSelectedNotes]);
-
-  // Close the mobile notes popover on outside click.
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (notesRef.current && !notesRef.current.contains(e.target)) {
-        setNotesOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const selectedParty = parties.find((p) => p.id === selectedId) || null;
 
@@ -656,28 +664,6 @@ function Parties() {
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Parties Overview
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Monitor customer and supplier relationships, track pending
-              collections, and stay on top of payments to maintain healthy cash
-              flow.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-          >
-            <Plus size={18} strokeWidth={2.5} />
-            Add Party
-          </button>
-        </div>
-
         {/* Stats strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <StatCard
@@ -808,10 +794,19 @@ function Parties() {
                         >
                           {getInitials(p.name)}
                         </span>
-                        <span
-                          className={`flex-1 truncate text-sm ${isActive ? "font-semibold text-slate-900" : "text-slate-700"}`}
-                        >
-                          {p.name}
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={`block truncate text-sm ${isActive ? "font-semibold text-slate-900" : "text-slate-700"}`}
+                          >
+                            {p.name}
+                          </span>
+                          {PARTY_TYPE_META[p.type] && (
+                            <span
+                              className={`mt-0.5 inline-block rounded-full px-1.5 py-px text-[10px] font-medium ${PARTY_TYPE_META[p.type].bg} ${PARTY_TYPE_META[p.type].color}`}
+                            >
+                              {PARTY_TYPE_META[p.type].label}
+                            </span>
+                          )}
                         </span>
                         <span
                           className={`text-sm font-medium shrink-0 ${
@@ -914,22 +909,18 @@ function Parties() {
                       )}
                     </div>
                   </div>
-                  {selectedNotes.length > 0 && (
-                    <div className="hidden lg:flex flex-1 min-w-0 max-w-xl flex-col rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 max-h-16 overflow-y-auto">
-                      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                        <StickyNote size={11} /> Notes
-                      </span>
-                      <ul className="text-xs text-slate-600 leading-snug">
-                        {selectedNotes.map((n, i) => (
-                          <li key={n._id || i} className="truncate">
-                            {n.content}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="ml-auto flex items-center gap-2 shrink-0">
+                    <IconButton
+                      title={
+                        selectedNotes.length
+                          ? `Notes (${selectedNotes.length})`
+                          : "Notes"
+                      }
+                      onClick={() => setNotesOpen(true)}
+                      colorClass="bg-blue-50 text-[#1E4D96] hover:bg-blue-100"
+                    >
+                      <Info size={16} />
+                    </IconButton>
                     <IconButton
                       title="WhatsApp"
                       colorClass="bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
@@ -942,31 +933,6 @@ function Parties() {
                     >
                       <Clock size={16} />
                     </IconButton>
-                    {selectedNotes.length > 0 && (
-                      <div className="relative lg:hidden group" ref={notesRef}>
-                        <button
-                          type="button"
-                          onClick={() => setNotesOpen((o) => !o)}
-                          title="Notes"
-                          aria-label="Notes"
-                          className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-                        >
-                          <StickyNote size={16} />
-                        </button>
-                        <div
-                          className={`absolute right-[-80px] top-11 z-30 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg group-hover:block ${notesOpen ? "block" : "hidden"}`}
-                        >
-                          <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                            <StickyNote size={11} /> Notes
-                          </p>
-                          <ul className="space-y-1 text-xs text-slate-600 max-h-40 overflow-y-auto">
-                            {selectedNotes.map((n, i) => (
-                              <li key={n._id || i}>• {n.content}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -1059,7 +1025,51 @@ function Parties() {
                     </div>
                   ) : (
                     <>
-                      <div className="overflow-x-auto -mx-4 sm:-mx-5">
+                      {/* Phones get rows instead of a 600px table. */}
+                      <div className="-mx-4 divide-y divide-slate-100 xl:hidden">
+                        {filteredTransactions.map((t) => {
+                          const meta = txnMeta(t.type);
+                          const Icon = meta.icon;
+                          return (
+                            <div
+                              key={t.id}
+                              className="flex items-center gap-3 px-4 py-3"
+                            >
+                              <span
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${meta.bg} ${meta.color}`}
+                              >
+                                <Icon size={15} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm text-slate-700">
+                                  {meta.label}
+                                </p>
+                                <p className="mt-0.5 truncate text-xs text-slate-400">
+                                  {t.number} · {t.date}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className="text-sm font-medium text-slate-800">
+                                  {t.total ? formatINR(t.total) : "—"}
+                                </p>
+                                <p
+                                  className={`mt-0.5 text-xs font-medium ${
+                                    t.balance > 0
+                                      ? "text-emerald-600"
+                                      : t.balance < 0
+                                        ? "text-rose-600"
+                                        : "text-slate-400"
+                                  }`}
+                                >
+                                  {t.balance ? formatINR(t.balance) : "—"}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="hidden overflow-x-auto -mx-4 sm:-mx-5 xl:block">
                         <table className="w-full min-w-[600px] text-sm">
                           <thead>
                             <tr className="text-left text-xs font-medium text-slate-400 uppercase tracking-wide border-b border-slate-100">
@@ -1179,6 +1189,13 @@ function Parties() {
         loading={editLoading}
         onClose={() => setModalOpen(false)}
         onSubmit={handleSaveParty}
+      />
+
+      <NotesModal
+        open={notesOpen}
+        partyName={selectedParty?.name}
+        notes={selectedNotes}
+        onClose={() => setNotesOpen(false)}
       />
 
       <ConfirmDialog

@@ -34,9 +34,29 @@ export function dmyToISO(dmy) {
 }
 
 // Blank party form used by the Add/Edit Party drawer.
-export function emptyPartyForm() {
+/**
+ * The API's `partyType` enum — required on POST /parties and settable on PUT.
+ * It's what decides which list a party shows up in: Purchase only offers
+ * suppliers, Sales only offers customers. One party is one or the other.
+ */
+export const PARTY_TYPES = [
+  { value: "customer", label: "Customer" },
+  { value: "supplier", label: "Supplier" },
+];
+
+export function partyTypeLabel(value) {
+  return PARTY_TYPES.find((t) => t.value === value)?.label || "";
+}
+
+/**
+ * A blank drawer form. `partyType` is passed in where the context already
+ * decides it — Purchase's "+ Add Supplier" can only ever make a supplier — and
+ * left empty on the Parties page, where the user picks it.
+ */
+export function emptyPartyForm(partyType = "") {
   return {
     name: "",
+    partyType,
     phone: "",
     email: "",
     billingName: "",
@@ -89,6 +109,7 @@ export function buildPartyPayload(formState) {
 
   return {
     name: formState.name.trim(),
+    partyType: formState.partyType,
     phone: formState.phone.trim(),
     email: formState.email.trim(),
     billingName: formState.billingName.trim(),

@@ -4,7 +4,7 @@ import {
   GetAllCountryList,
   GetAllStateListByCountryId,
 } from "../services/apiServices";
-import { emptyAddress } from "../utils/party";
+import { emptyAddress, PARTY_TYPES } from "../utils/party";
 
 const FIELD_CLASS =
   "w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm text-slate-700 " +
@@ -37,6 +37,9 @@ export default function AddPartyDrawer({
   setFormState,
   saving,
   loading,
+  // Set where the context already decides the tag (Purchase's "+ Add
+  // Supplier"), which shows it as fixed rather than asking again.
+  lockPartyType = false,
   onClose,
   onSubmit,
 }) {
@@ -45,6 +48,7 @@ export default function AddPartyDrawer({
   const [countries, setCountries] = useState([]);
   const [statesByCountry, setStatesByCountry] = useState({});
   const [nameError, setNameError] = useState("");
+  const [typeError, setTypeError] = useState("");
 
   // Reset to the first tab each time the drawer opens, and focus the name field.
   useEffect(() => {
@@ -52,12 +56,13 @@ export default function AddPartyDrawer({
     const id = requestAnimationFrame(() => {
       setTab("tax");
       setNameError("");
+      setTypeError("");
       nameRef.current?.focus();
     });
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Party name is the only required field; validate before handing off to save.
+  // Name and party type are the required fields; validate before saving.
   function handleSubmit(e) {
     e.preventDefault();
     if (!formState.name.trim()) {
@@ -65,7 +70,15 @@ export default function AddPartyDrawer({
       nameRef.current?.focus();
       return;
     }
+    if (!formState.partyType) {
+      // The tag lives inside the Tax & Address tab, so open it — an error
+      // pointing at a field the user can't see would be a dead end.
+      setTab("tax");
+      setTypeError("Pick whether this party is a customer or a supplier.");
+      return;
+    }
     setNameError("");
+    setTypeError("");
     onSubmit(e);
   }
 
@@ -142,7 +155,10 @@ export default function AddPartyDrawer({
       ),
     }));
   const addNote = () =>
-    setFormState((f) => ({ ...f, notes: [...(f.notes || []), { content: "" }] }));
+    setFormState((f) => ({
+      ...f,
+      notes: [...(f.notes || []), { content: "" }],
+    }));
   const removeNote = (index) =>
     setFormState((f) => ({
       ...f,
@@ -393,6 +409,51 @@ export default function AddPartyDrawer({
                   placeholder="Email ID"
                   className={FIELD_CLASS}
                 />
+
+                {/* Party type — required by the API, and what decides whether
+                    this party appears in Purchase or in Sales. */}
+                <div>
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    Party Type<span className="ml-0.5 text-rose-500">*</span>
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PARTY_TYPES.map((t) => {
+                      const selected = formState.partyType === t.value;
+                      const disabled = lockPartyType && !selected;
+                      return (
+                        <button
+                          key={t.value}
+                          type="button"
+                          disabled={disabled}
+                          aria-pressed={selected}
+                          onClick={() => {
+                            set({ partyType: t.value });
+                            if (typeError) setTypeError("");
+                          }}
+                          className={`rounded-md border px-3 py-2.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
+                            selected
+                              ? "border-[#1E4D96] bg-[#EEF3FB] text-[#1E4D96]"
+                              : disabled
+                                ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
+                                : typeError
+                                  ? "border-rose-400 text-slate-600 hover:bg-slate-50"
+                                  : "border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {typeError && (
+                    <p className="mt-1 text-xs text-rose-600">{typeError}</p>
+                  )}
+                  {lockPartyType && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Added from Purchase, so this party is a supplier.
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div>

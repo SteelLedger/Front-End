@@ -33,6 +33,20 @@ function extractPurchases(res) {
 
 const dash = (v) => (v && String(v).trim() ? v : "—");
 
+/**
+ * A bill's total for one line-item field. Bills carry `lineItems[]`, and this
+ * view is already filtered to a single raw material, so the lines that come
+ * back all belong to it. Falls back to the bill-level total the API sends.
+ */
+function billTotal(bill, field) {
+  const key = field === "bundles" ? "totalBundles" : "totalQuantity";
+  if (bill?.[key] != null) return Number(bill[key]) || 0;
+  return (bill?.lineItems ?? []).reduce(
+    (sum, l) => sum + (Number(l?.[field]) || 0),
+    0,
+  );
+}
+
 function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -55,7 +69,9 @@ function SortIcon({ active, dir }) {
       <ChevronUp
         size={12}
         strokeWidth={2.5}
-        className={active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"}
+        className={
+          active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
       />
       <ChevronDown
         size={12}
@@ -345,7 +361,7 @@ export default function RawMaterialPurchases() {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[680px] text-sm">
+                <table className="w-full min-w-[740px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <SortHeader label="Date" field="date" {...sortProps} />
@@ -356,8 +372,14 @@ export default function RawMaterialPurchases() {
                       />
                       <th className="px-4 py-3 font-semibold">Supplier</th>
                       <SortHeader
+                        label="Bundles"
+                        field="totalBundles"
+                        align="right"
+                        {...sortProps}
+                      />
+                      <SortHeader
                         label="Quantity"
-                        field="quantity"
+                        field="totalQuantity"
                         align="right"
                         {...sortProps}
                       />
@@ -375,8 +397,11 @@ export default function RawMaterialPurchases() {
                         <td className="px-4 py-3 text-slate-700">
                           {dash(p.supplierName)}
                         </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-700">
+                          {billTotal(p, "bundles")}
+                        </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">
-                          {gmToKgDisplay(p.quantity ?? 0)} kg
+                          {gmToKgDisplay(billTotal(p, "quantity"))} kg
                         </td>
                       </tr>
                     ))}

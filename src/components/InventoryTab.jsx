@@ -25,12 +25,16 @@ function SortIcon({ active, dir }) {
       <ChevronUp
         size={12}
         strokeWidth={2.5}
-        className={active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"}
+        className={
+          active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
       />
       <ChevronDown
         size={12}
         strokeWidth={2.5}
-        className={active && dir === "desc" ? "text-[#1E4D96]" : "text-slate-300"}
+        className={
+          active && dir === "desc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
       />
     </span>
   );
@@ -211,7 +215,43 @@ export default function InventoryTab({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Phones get cards: first column is the heading, the rest
+                become label/value pairs. */}
+            <div className="divide-y divide-slate-100 xl:hidden">
+              {rows.map((row, ri) => (
+                <div key={row.id ?? ri} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 font-semibold text-slate-800">
+                      {columns[0].render(row)}
+                    </div>
+                    {onView && (
+                      <button
+                        type="button"
+                        onClick={() => onView(row)}
+                        aria-label="View byproducts"
+                        className="shrink-0 rounded-md p-2.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                      >
+                        <Eye size={16} />
+                      </button>
+                    )}
+                  </div>
+                  {columns.length > 1 && (
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                      {columns.slice(1).map((col) => (
+                        <div key={col.label} className="min-w-0">
+                          <dt className="text-slate-400">{col.label}</dt>
+                          <dd className="mt-0.5 truncate text-slate-700">
+                            {col.render(row)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto xl:block">
               <table className="w-full min-w-[640px] text-sm table-fixed">
                 <thead>
                   <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
@@ -251,7 +291,10 @@ export default function InventoryTab({
                   {rows.map((row, ri) => (
                     <tr key={row.id ?? ri} className="hover:bg-slate-50/70">
                       {columns.map((col) => (
-                        <td key={col.label} className="py-3 px-4 text-slate-600">
+                        <td
+                          key={col.label}
+                          className="py-3 px-4 text-slate-600"
+                        >
                           {col.render(row)}
                         </td>
                       ))}

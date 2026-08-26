@@ -48,14 +48,16 @@ const normalizeProduct = (raw) => ({
   productSize: raw.productSize || "—",
   rawMaterialName: raw.rawMaterialName || "—",
   totalQtyGm: raw.totalQty ?? 0,
-  status: raw.status || (Number(raw.totalQty) > 0 ? "in_stock" : "out_of_stock"),
+  status:
+    raw.status || (Number(raw.totalQty) > 0 ? "in_stock" : "out_of_stock"),
 });
 const normalizeByProduct = (raw) => ({
   id: raw.slug,
   byProductName: raw.byProductName || "—",
   rawMaterialName: raw.rawMaterialName || "",
   totalQtyGm: raw.totalQty ?? 0,
-  status: raw.status || (Number(raw.totalQty) > 0 ? "in_stock" : "out_of_stock"),
+  status:
+    raw.status || (Number(raw.totalQty) > 0 ? "in_stock" : "out_of_stock"),
 });
 
 const qtyCell = (r) => (
@@ -72,7 +74,11 @@ const PRODUCT_COLUMNS = [
       <span className="font-medium text-slate-800">{r.productName}</span>
     ),
   },
-  { label: "Product Size", sortField: "productSize", render: (r) => r.productSize },
+  {
+    label: "Product Size",
+    sortField: "productSize",
+    render: (r) => r.productSize,
+  },
   {
     label: "Raw Material",
     sortField: "rawMaterialName",
@@ -203,9 +209,16 @@ export default function ProductInventory() {
   // A product-inventory row is aggregated by product name, so its byproducts
   // come from that product's productions: fetch them and sum by byproduct name.
   async function openView(row) {
-    setViewState({ loading: true, productName: row.productName, byProducts: [] });
+    setViewState({
+      loading: true,
+      productName: row.productName,
+      byProducts: [],
+    });
     try {
-      const listRes = await GetProductions({ search: row.productName, limit: 100 });
+      const listRes = await GetProductions({
+        search: row.productName,
+        limit: 100,
+      });
       const d = listRes?.data?.data ?? {};
       const prods = Array.isArray(d) ? d : (d.productions ?? []);
       const matching = prods
@@ -229,7 +242,11 @@ export default function ProductInventory() {
         byProductName,
         qty,
       }));
-      setViewState({ loading: false, productName: row.productName, byProducts });
+      setViewState({
+        loading: false,
+        productName: row.productName,
+        byProducts,
+      });
     } catch {
       setViewState({
         loading: false,
@@ -242,15 +259,6 @@ export default function ProductInventory() {
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            Product Inventory
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Current product and byproduct stock on hand.
-          </p>
-        </div>
-
         {/* Inner tabs */}
         <div className="flex items-center gap-2 mb-4">
           <TabBtn active={tab === "items"} onClick={() => setTab("items")}>

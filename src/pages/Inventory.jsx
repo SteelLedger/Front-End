@@ -181,27 +181,6 @@ export default function Inventory() {
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Inventory Raw Material
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Current raw material (Patta) stock on hand, grouped by size, point
-              and grade. Stock is built from purchases.
-            </p>
-          </div>
-          {/* <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-          >
-            <Plus size={18} strokeWidth={2.5} />
-            Add Purchase
-          </button> */}
-        </div>
-
         {/* Stats strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <StatCard
@@ -283,7 +262,42 @@ export default function Inventory() {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              {/* Phones get cards — the table needs 720px. */}
+              <div className="divide-y divide-slate-100 xl:hidden">
+                {items.map((g) => (
+                  <Link
+                    key={g.id}
+                    to={`/inventory/${g.id}`}
+                    className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-slate-50/70"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-[#1E4D96]">
+                        {dash(g.rawMaterialName)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        Size {dash(g.size)} · Point {dash(g.point)} · Grade{" "}
+                        {dash(g.grade)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-semibold text-slate-900">
+                        {gmToKgDisplay(g.totalQty)} kg
+                      </p>
+                      <span
+                        className={`mt-1 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          g.status === "in_stock"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-rose-50 text-rose-700"
+                        }`}
+                      >
+                        {g.status === "in_stock" ? "In stock" : "Out of stock"}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto xl:block">
                 <table className="w-full min-w-[720px] text-sm table-fixed">
                   <thead>
                     <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
