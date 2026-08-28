@@ -77,7 +77,7 @@ function PasswordField({ label, id, value, onChange, autoComplete }) {
           type="button"
           onClick={() => setVisible((v) => !v)}
           aria-label={visible ? "Hide password" : "Show password"}
-          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+          className="absolute right-3.5 top-1/2 -mr-2 -translate-y-1/2 p-2 text-slate-400"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path
@@ -193,8 +193,7 @@ export default function ForgotPassword() {
 
     const trimmed = email.trim();
     if (!trimmed) return setError("Enter your email address.");
-    if (!isValidEmail(trimmed))
-      return setError("Enter a valid email address.");
+    if (!isValidEmail(trimmed)) return setError("Enter a valid email address.");
 
     setLoading(true);
     try {
@@ -388,7 +387,7 @@ export default function ForgotPassword() {
             <button
               type="button"
               onClick={startOver}
-              className="font-medium text-slate-500 hover:text-slate-700"
+              className="-my-1.5 inline-block py-1.5 font-medium text-slate-500 hover:text-slate-700"
             >
               Use a different email
             </button>
@@ -399,7 +398,7 @@ export default function ForgotPassword() {
               className={
                 canResend
                   ? AUTH_LINK_CLASS
-                  : "cursor-not-allowed text-[13px] font-medium text-slate-400"
+                  : "-my-1.5 inline-block cursor-not-allowed py-1.5 text-[13px] font-medium text-slate-400"
               }
             >
               {resending
@@ -456,7 +455,7 @@ export default function ForgotPassword() {
 
       {/* ── Done ── */}
       {step === "done" && (
-        <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-5 text-center">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-5 text-center">
           <span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <path
@@ -477,7 +476,10 @@ export default function ForgotPassword() {
       {step !== "done" && (
         <p className="mt-7 text-center text-[13px] text-slate-500">
           Remembered it?{" "}
-          <Link to="/login" className="font-semibold text-[#2563C4] no-underline">
+          <Link
+            to="/login"
+            className="-my-1.5 inline-block py-1.5 align-baseline font-semibold text-[#2563C4] no-underline"
+          >
             Back to sign in
           </Link>
         </p>

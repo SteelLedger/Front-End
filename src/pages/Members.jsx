@@ -14,9 +14,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  Lock,
 } from "lucide-react";
 import MemberDrawer from "../components/MemberDrawer";
+import { AdminLocked } from "../components/AdminOnly";
 import ConfirmDialog from "../components/ConfirmDialog";
 import MenuPopover from "../components/MenuPopover";
 import FilterSelect from "../components/FilterSelect";
@@ -113,7 +113,7 @@ function RowMenu({ items }) {
         aria-label="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`rounded-md p-1.5 transition-colors hover:bg-slate-100 hover:text-slate-600 ${
+        className={`rounded-md p-2 transition-colors hover:bg-slate-100 hover:text-slate-600 ${
           open ? "bg-slate-100 text-slate-600" : "text-slate-400"
         }`}
       >
@@ -387,20 +387,10 @@ export default function Members() {
   // Reachable by typing the URL — the nav item itself is admin-only.
   if (!isAdminUser) {
     return (
-      <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5">
-        <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-20 text-center shadow-sm">
-          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-            <Lock size={26} />
-          </span>
-          <h2 className="text-base font-semibold text-slate-900">
-            Members are admin-only
-          </h2>
-          <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-500">
-            Ask an admin on your team if you need someone invited or a role
-            changed.
-          </p>
-        </div>
-      </div>
+      <AdminLocked
+        title="Members are admin-only"
+        message="Ask an admin on your team if you need someone invited or a role changed."
+      />
     );
   }
 
@@ -459,7 +449,7 @@ export default function Members() {
             <button
               type="button"
               onClick={resetFilters}
-              className="ml-auto inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="ml-auto inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
             >
               <X size={14} /> Reset
             </button>
@@ -655,7 +645,7 @@ export default function Members() {
                       disabled={page <= 1}
                       onClick={() => setPage((n) => Math.max(1, n - 1))}
                       aria-label="Previous page"
-                      className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <ChevronLeft size={16} />
                     </button>
@@ -666,7 +656,7 @@ export default function Members() {
                         setPage((n) => Math.min(totalPages, n + 1))
                       }
                       aria-label="Next page"
-                      className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <ChevronRight size={16} />
                     </button>

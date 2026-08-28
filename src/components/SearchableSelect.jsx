@@ -89,7 +89,7 @@ export default function SearchableSelect({
           ref.current?.focus();
         }}
         aria-label={`Toggle ${noun} list`}
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+        className="absolute right-2 top-1/2 -mr-2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-600"
       >
         <ChevronDown
           size={16}

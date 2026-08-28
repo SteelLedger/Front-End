@@ -15,6 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  UserRound,
+  Truck,
   Trash2,
   TrendingUp,
   ShoppingCart,
@@ -186,7 +188,13 @@ function extractParties(res) {
     d.totalCount ??
     d.count ??
     (Array.isArray(list) ? list.length : 0);
-  return { list: Array.isArray(list) ? list : [], total: Number(total) || 0 };
+  return {
+    list: Array.isArray(list) ? list : [],
+    // { totalParties, totalSuppliers, totalCustomers } — counted server-side
+    // across the whole filtered set, not just the page on screen.
+    summary: Array.isArray(d) ? {} : (d.summary ?? {}),
+    total: Number(total) || 0,
+  };
 }
 
 // Map a full party (GET /parties/:id) into the drawer form. Address state/country
@@ -279,7 +287,7 @@ function extractTxns(res) {
 
 function StatCard({ icon: Icon, iconBg, iconColor, label, value, valueColor }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
       <span
         className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
@@ -351,6 +359,7 @@ function HeaderIconButton({ children, title, onClick }) {
 function Parties() {
   // Server-driven list state
   const [parties, setParties] = useState([]);
+  const [summary, setSummary] = useState({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState("");
@@ -430,9 +439,10 @@ function Parties() {
         page,
         limit: PAGE_SIZE,
       });
-      const { list, total: t } = extractParties(res);
+      const { list, summary: s, total: t } = extractParties(res);
       const normalized = list.map(normalizeParty);
       setParties(normalized);
+      setSummary(s);
       setTotal(t);
       setSelectedId((cur) =>
         cur && normalized.some((p) => p.id === cur)
@@ -441,6 +451,7 @@ function Parties() {
       );
     } catch (err) {
       setParties([]);
+      setSummary({});
       setListError("Couldn't load parties.");
       toast.error(err?.response?.data?.message || "Failed to load parties");
     } finally {
@@ -521,16 +532,6 @@ function Parties() {
   }, [txns, txnSearch]);
 
   // Best-effort totals from the current page (no summary endpoint yet).
-  const pageTotals = useMemo(() => {
-    const toCollect = parties
-      .filter((p) => p.amount > 0)
-      .reduce((s, p) => s + p.amount, 0);
-    const toPay = parties
-      .filter((p) => p.amount < 0)
-      .reduce((s, p) => s + Math.abs(p.amount), 0);
-    return { toCollect, toPay };
-  }, [parties]);
-
   function handleSelectParty(id) {
     setSelectedId(id);
     setTxnFilter("All");
@@ -671,23 +672,21 @@ function Parties() {
             iconBg="bg-blue-50"
             iconColor="text-blue-600"
             label="Total Parties"
-            value={String(total)}
+            value={String(summary.totalParties ?? total)}
           />
           <StatCard
-            icon={ArrowDownLeft}
-            iconBg="bg-emerald-50"
-            iconColor="text-emerald-600"
-            label="To Collect"
-            value={formatINR(pageTotals.toCollect)}
-            valueColor="text-emerald-600"
+            icon={UserRound}
+            iconBg="bg-blue-50"
+            iconColor="text-[#1E4D96]"
+            label="Total Customers"
+            value={String(summary.totalCustomers ?? 0)}
           />
           <StatCard
-            icon={ArrowUpRight}
-            iconBg="bg-rose-50"
-            iconColor="text-rose-600"
-            label="To Pay"
-            value={formatINR(pageTotals.toPay)}
-            valueColor="text-rose-600"
+            icon={Truck}
+            iconBg="bg-violet-50"
+            iconColor="text-violet-600"
+            label="Total Suppliers"
+            value={String(summary.totalSuppliers ?? 0)}
           />
         </div>
 
@@ -712,7 +711,7 @@ function Parties() {
                     type="button"
                     onClick={() => setQuery("")}
                     aria-label="Clear search"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2.5 top-1/2 -mr-2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-600"
                   >
                     <X size={14} />
                   </button>
@@ -725,7 +724,7 @@ function Parties() {
                 <button
                   type="button"
                   onClick={() => toggleSort("name")}
-                  className="flex items-center gap-1 hover:text-slate-600"
+                  className="-my-1.5 flex items-center gap-1 py-1.5 hover:text-slate-600"
                 >
                   Party Name{" "}
                   <SortIcon active={sortKey === "name"} dir={sortDir} />
@@ -741,7 +740,7 @@ function Parties() {
               <button
                 type="button"
                 onClick={() => toggleSort("amount")}
-                className="flex items-center gap-1 hover:text-slate-600"
+                className="-my-1.5 flex items-center gap-1 py-1.5 hover:text-slate-600"
               >
                 Amount <SortIcon active={sortKey === "amount"} dir={sortDir} />
               </button>
@@ -783,7 +782,7 @@ function Parties() {
                         }`}
                       >
                         {isActive && (
-                          <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#1E4D96] rounded-r" />
+                          <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#1E4D96] rounded-r-md" />
                         )}
                         <span
                           className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
@@ -825,7 +824,7 @@ function Parties() {
                         onClick={(e) => requestDeleteParty(p, e)}
                         aria-label={`Delete ${p.name}`}
                         title="Delete party"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus:opacity-100 transition-opacity"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -846,7 +845,7 @@ function Parties() {
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     aria-label="Previous page"
                   >
                     <ChevronLeft size={16} />
@@ -855,7 +854,7 @@ function Parties() {
                     type="button"
                     disabled={page >= totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     aria-label="Next page"
                   >
                     <ChevronRight size={16} />
@@ -890,7 +889,7 @@ function Parties() {
                           onClick={() => openEditModal(selectedParty)}
                           aria-label="Edit party"
                           title="Edit party"
-                          className="text-slate-400 hover:text-[#1E4D96] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50 rounded"
+                          className="-m-2 p-2 text-slate-400 hover:text-[#1E4D96] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50 rounded-md"
                         >
                           <Pencil size={15} />
                         </button>
@@ -921,18 +920,18 @@ function Parties() {
                     >
                       <Info size={16} />
                     </IconButton>
-                    <IconButton
+                    {/* <IconButton
                       title="WhatsApp"
                       colorClass="bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
                     >
                       <Phone size={16} />
-                    </IconButton>
-                    <IconButton
+                    </IconButton> */}
+                    {/* <IconButton
                       title="Set reminder"
                       colorClass="bg-orange-50 text-orange-600 hover:bg-orange-100"
                     >
                       <Clock size={16} />
-                    </IconButton>
+                    </IconButton> */}
                   </div>
                 </div>
 
@@ -957,9 +956,9 @@ function Parties() {
                       >
                         <Search size={16} />
                       </HeaderIconButton>
-                      <HeaderIconButton title="Print" onClick={handlePrint}>
+                      {/* <HeaderIconButton title="Print" onClick={handlePrint}>
                         <Printer size={16} />
-                      </HeaderIconButton>
+                      </HeaderIconButton> */}
                       <HeaderIconButton
                         title="Export CSV"
                         onClick={handleExportCSV}
@@ -988,7 +987,7 @@ function Parties() {
                           setTxnFilter(f);
                           setTxnPage(1);
                         }}
-                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/40 ${
+                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/40 ${
                           txnFilter === f
                             ? "bg-slate-900 text-white border-slate-900"
                             : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
@@ -1143,7 +1142,7 @@ function Parties() {
                               onClick={() =>
                                 setTxnPage((p) => Math.max(1, p - 1))
                               }
-                              className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                               aria-label="Previous page"
                             >
                               <ChevronLeft size={16} />
@@ -1156,7 +1155,7 @@ function Parties() {
                                   Math.min(txnTotalPages, p + 1),
                                 )
                               }
-                              className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                               aria-label="Next page"
                             >
                               <ChevronRight size={16} />

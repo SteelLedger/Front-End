@@ -93,7 +93,7 @@ export default function DateFilterBar({
         onClick={() => setSheetOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={sheetOpen}
-        className={`inline-flex max-w-[7.5rem] items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-sm transition-colors sm:hidden ${
+        className={`inline-flex max-w-[7.5rem] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors sm:hidden ${
           active
             ? "border-[#BBD0EC] bg-[#EEF3FB] text-[#1E4D96]"
             : "border-slate-200 bg-white text-slate-700"
@@ -192,7 +192,7 @@ export default function DateFilterBar({
         <button
           type="button"
           onClick={() => changePeriod(defaultPeriod)}
-          className="ml-auto hidden items-center gap-1 rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:inline-flex"
+          className="ml-auto hidden items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:inline-flex"
         >
           <X size={14} /> Reset
         </button>

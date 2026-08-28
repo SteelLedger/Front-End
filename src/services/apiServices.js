@@ -29,6 +29,41 @@ export const resetPassword = (data) => {
   return POST(`/auth/reset-password`, data);
 };
 
+/* ------------------------------- Action logs ------------------------------- */
+
+/**
+ * Audit trail of who did what. Admin-only — a non-admin token gets 403 — and
+ * the backend expires entries after 30 days via a TTL index. `action` and
+ * `resourceType` accept "all", which is sent as no filter at all. Sorting is
+ * newest-first by default; only the direction is adjustable.
+ */
+export const GetActionLogs = ({
+  search,
+  actorId,
+  action,
+  resourceType,
+  fromDate,
+  toDate,
+  sortOrder,
+  page,
+  limit,
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (search) qs.append("search", search);
+  if (actorId) qs.append("actorId", actorId);
+  if (action && action !== "all") qs.append("action", action);
+  if (resourceType && resourceType !== "all")
+    qs.append("resourceType", resourceType);
+  // Inclusive DD/MM/YYYY range.
+  if (fromDate) qs.append("fromDate", fromDate);
+  if (toDate) qs.append("toDate", toDate);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/action-logs${q ? `?${q}` : ""}`);
+};
+
 /* ---------------------------- Users / members ------------------------------ */
 
 /**
@@ -210,10 +245,31 @@ export const GetRawMaterials = ({
   return GET(`/raw-materials${q ? `?${q}` : ""}`);
 };
 
+/**
+ * Inbound stock history for one raw-material row, from the durable
+ * stock_movements collection. Replaces reading balance-patta entries off
+ * GET /purchases, which stopped returning them on 2026-08-28. Entries carry
+ * `entryType: "purchase" | "balance_patta"`.
+ */
+export const GetRawMaterialInboundHistory = (
+  id,
+  { fromDate, toDate, sortOrder, page, limit } = {},
+) => {
+  const qs = new URLSearchParams();
+  if (fromDate) qs.append("fromDate", fromDate);
+  if (toDate) qs.append("toDate", toDate);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/raw-materials/${id}/inbound-history${q ? `?${q}` : ""}`);
+};
+
 /* ------------------------------- Productions ------------------------------- */
 
 export const GetProductions = ({
   search,
+  productId,
   fromDate,
   toDate,
   sortBy,
@@ -223,6 +279,8 @@ export const GetProductions = ({
 } = {}) => {
   const qs = new URLSearchParams();
   if (search) qs.append("search", search);
+  // Narrows the list to the runs that made one product inventory row.
+  if (productId) qs.append("productId", productId);
   // Inclusive DD/MM/YYYY range over the production date.
   if (fromDate) qs.append("fromDate", fromDate);
   if (toDate) qs.append("toDate", toDate);

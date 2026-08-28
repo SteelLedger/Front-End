@@ -117,11 +117,9 @@ export default function ProductionDrawer({
   // is given at least one byproduct is required.
   const sizeEntered = String(formState.productSize).trim() !== "";
   const qtyEntered = Number(formState.howMany) > 0;
-  const bundlesEntered = Number(formState.productBundles) > 0;
-  // The API takes size, quantity and bundles as one unit — all or nothing.
-  const productParts = [sizeEntered, qtyEntered, bundlesEntered];
-  const hasProduct = productParts.every(Boolean);
-  const productHalfDone = productParts.some(Boolean) && !hasProduct;
+  // Size and quantity go together; bundles is optional on its own.
+  const hasProduct = sizeEntered && qtyEntered;
+  const productHalfDone = sizeEntered !== qtyEntered;
 
   // Balance patta size and quantity likewise go together.
   const balanceSizeEntered = String(formState.balancePattaSize).trim() !== "";
@@ -154,7 +152,7 @@ export default function ProductionDrawer({
   const blockedReason = !formState.rawMaterialId
     ? "Select a sheet to cut from."
     : productHalfDone
-      ? "Product size, quantity and bundles go together — fill all three, or clear them to record byproducts only."
+      ? "Product size and quantity go together — fill both, or clear both to record byproducts only."
       : balanceHalfDone
         ? "Balance patta needs both a size and a quantity."
         : !hasProduct && !hasByproduct
@@ -199,7 +197,7 @@ export default function ProductionDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+            className="-m-2 rounded-md p-2 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
           >
             <X size={20} />
           </button>
@@ -292,7 +290,7 @@ export default function ProductionDrawer({
             </Field>
             <Field
               label="Product Bundles"
-              info="How many bundles this run produced. A count, not a weight."
+              info="How many bundles this run produced. A count, not a weight — optional, and recorded on the production only."
             >
               <input
                 inputMode="numeric"
@@ -301,11 +299,7 @@ export default function ProductionDrawer({
                   set({ productBundles: e.target.value.replace(/[^0-9]/g, "") })
                 }
                 placeholder="e.g. 10"
-                className={`${FIELD} ${
-                  productHalfDone && !bundlesEntered
-                    ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
-                    : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
-                }`}
+                className={`${FIELD} border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30`}
               />
             </Field>
           </div>
@@ -336,22 +330,6 @@ export default function ProductionDrawer({
               />
             </Field>
           </div>
-
-          {/* Remaining sheet weight */}
-          {selectedSheet && (
-            <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-              <span className="text-xs font-medium text-slate-500">
-                Remaining sheet weight
-              </span>
-              <span
-                className={`text-sm font-semibold ${
-                  remainingKg < 0 ? "text-rose-600" : "text-emerald-600"
-                }`}
-              >
-                {Number(remainingKg.toFixed(3)).toLocaleString("en-IN")} kg
-              </span>
-            </div>
-          )}
 
           {/* Balance patta — the usable offcut that goes back to raw material */}
           <div>
@@ -472,7 +450,7 @@ export default function ProductionDrawer({
             <button
               type="button"
               onClick={addByproduct}
-              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#1E4D96] hover:underline"
+              className="-ml-2 mt-1.5 inline-flex items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-[#1E4D96] hover:underline"
             >
               <Plus size={13} strokeWidth={2.5} /> Add Another Byproduct
             </button>
@@ -481,8 +459,21 @@ export default function ProductionDrawer({
 
         {/* Footer */}
         <div className="border-t border-slate-200">
-          {blockedReason && (
-            <p className="px-6 pt-3 text-xs text-slate-400">{blockedReason}</p>
+          {/* Sits here rather than mid-form so it stays visible while the
+              fields above it scroll — it's the number you check before saving. */}
+          {selectedSheet && (
+            <div className="mx-6 mt-3 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+              <span className="text-xs font-medium text-slate-500">
+                Remaining sheet weight
+              </span>
+              <span
+                className={`text-sm font-semibold ${
+                  remainingKg < 0 ? "text-rose-600" : "text-emerald-600"
+                }`}
+              >
+                {Number(remainingKg.toFixed(3)).toLocaleString("en-IN")} kg
+              </span>
+            </div>
           )}
           <div className="flex items-center justify-end gap-3 px-6 py-4">
             <button
@@ -496,6 +487,7 @@ export default function ProductionDrawer({
               type="submit"
               form="production-form"
               disabled={saving || !canSubmit}
+              title={blockedReason || undefined}
               className="inline-flex items-center gap-2 rounded-md bg-[#1E4D96] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
             >
               {mode === "add" ? (

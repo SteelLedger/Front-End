@@ -15,9 +15,12 @@ import Inventory from "../pages/Inventory";
 import RawMaterialPurchases from "../pages/RawMaterialPurchases";
 import Product from "../pages/Product";
 import ProductInventory from "../pages/ProductInventory";
+import ProductProductions from "../pages/ProductProductions";
 import Members from "../pages/Members";
+import ActionLogs from "../pages/ActionLogs";
 import Settings from "../pages/Settings";
 import ComingSoon from "../pages/ComingSoon";
+import AdminOnly from "../components/AdminOnly";
 import NotFound from "../pages/NotFound";
 
 const router = createBrowserRouter([
@@ -59,6 +62,11 @@ const router = createBrowserRouter([
             path: "/product",
             element: <Product />,
           },
+          // Production runs behind one product inventory row.
+          {
+            path: "/product-inventory/:id",
+            element: <ProductProductions />,
+          },
           {
             path: "/product-inventory",
             element: <ProductInventory />,
@@ -88,13 +96,33 @@ const router = createBrowserRouter([
           // Modules not built yet — placeholders so QA doesn't hit blank screens.
           {
             path: "/reports",
-            element: <ComingSoon title="Reports" />,
+            element: (
+              <AdminOnly
+                title="Reports are admin-only"
+                message="Ask an admin on your team if you need to see reporting."
+              >
+                <ComingSoon title="Reports" />
+              </AdminOnly>
+            ),
           },
           // Team members — admin-only in practice; the page itself shows a
           // locked state for anyone else who reaches it by URL.
           {
             path: "/members",
             element: <Members />,
+          },
+          // The audit trail. /action-logs 403s for anyone but an admin, so the
+          // route stops them before the page ever asks.
+          {
+            path: "/action-logs",
+            element: (
+              <AdminOnly
+                title="The action log is admin-only"
+                message="Ask an admin on your team if you need to review activity."
+              >
+                <ActionLogs />
+              </AdminOnly>
+            ),
           },
           {
             path: "/settings",

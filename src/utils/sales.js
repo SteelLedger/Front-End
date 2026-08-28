@@ -43,39 +43,27 @@ export const SORTABLE_FIELDS = [
 
 /**
  * One item line on a sale. `id` is a productId or a byproduct inventory id.
- * `bundles` applies to PRODUCT lines only — the API requires it there and has
- * no such field on by-product lines, so it stays empty for those.
+ * No bundle count: the backend dropped `bundles` from sale lines (and from the
+ * sale/summary totals) on 2026-08-28 — bundles now live on purchases and
+ * productions only.
  */
 export function emptyLine() {
-  return { id: "", name: "", qty: "", bundles: "" }; // qty in kg
+  return { id: "", name: "", qty: "" }; // qty in kg
 }
 
 /** Lines the user actually filled in — blank rows are ignored on save. */
 export const filledLines = (lines) =>
   (lines || []).filter((l) => l.id && Number(l.qty) > 0);
 
-/**
- * A draft line is ready to add once it has an item and a quantity — plus a
- * bundle count on the product side, which the API requires.
- */
-export const isCompleteLine = (l, requireBundles = false) =>
-  !!l?.id &&
-  Number(l?.qty) > 0 &&
-  (!requireBundles || Number(l?.bundles) > 0);
+/** A draft line is ready to add once it has an item and a quantity. */
+export const isCompleteLine = (l) => !!l?.id && Number(l?.qty) > 0;
 
 /** Something was typed but the line isn't addable yet. */
-export const isPartialLine = (l, requireBundles = false) =>
-  !isCompleteLine(l, requireBundles) &&
-  (!!l?.id ||
-    String(l?.qty ?? "").trim() !== "" ||
-    (requireBundles && String(l?.bundles ?? "").trim() !== ""));
+export const isPartialLine = (l) =>
+  !isCompleteLine(l) && (!!l?.id || String(l?.qty ?? "").trim() !== "");
 
 export const linesTotalGm = (lines) =>
   filledLines(lines).reduce((sum, l) => sum + kgToGm(l.qty), 0);
-
-/** Bundle count across product lines. */
-export const linesTotalBundles = (lines) =>
-  filledLines(lines).reduce((sum, l) => sum + (Number(l.bundles) || 0), 0);
 
 /** Blank drafts for the two "add an item" composers. */
 export const emptyDraft = () => ({
@@ -113,7 +101,6 @@ export function buildSalePayload(f) {
     products: filledLines(f.products).map((l) => ({
       productId: l.id,
       quantity: kgToGm(l.qty),
-      bundles: Number(l.bundles) || 0,
     })),
     byProducts: filledLines(f.byProducts).map((l) => ({
       byProductInventoryId: l.id,
@@ -133,7 +120,6 @@ export function normalizeSale(raw) {
     name: p.productName ?? "",
     size: p.productSize ?? "",
     quantity: p.quantity ?? 0,
-    bundles: p.bundles ?? 0,
   }));
   const byProducts = (raw.byProducts ?? []).map((b) => ({
     id: idOf(b.byProductInventoryId),
@@ -145,9 +131,6 @@ export function normalizeSale(raw) {
 
   const totalProductQty = raw.totalProductQty ?? sumQty(products);
   const totalByProductQty = raw.totalByProductQty ?? sumQty(byProducts);
-  const totalProductBundles =
-    raw.totalProductBundles ??
-    products.reduce((sum, p) => sum + (Number(p.bundles) || 0), 0);
 
   return {
     id: raw._id ?? raw.id,
@@ -159,10 +142,32 @@ export function normalizeSale(raw) {
     products,
     byProducts,
     totalProductQty,
-    totalProductBundles,
     totalByProductQty,
     totalQuantity: totalProductQty + totalByProductQty,
   };
+}
+
+/**
+ * A sale's products and byproducts as one ordered list. Products first, then
+ * byproducts — each carrying its kind so a row can dot them, and byproducts
+ * labelled with the material they came off. Shared by the Sales list (which
+ * shows only the first line) and the items modal (which shows them all).
+ */
+export function saleLines(sale) {
+  return [
+    ...(sale.products ?? []).map((p) => ({
+      key: `p-${p.id || p.name}`,
+      kind: "product",
+      label: p.name || "—",
+      quantity: p.quantity,
+    })),
+    ...(sale.byProducts ?? []).map((b) => ({
+      key: `b-${b.id || b.name}`,
+      kind: "byproduct",
+      label: byProductLabel(b.name, b.rawMaterialName) || "—",
+      quantity: b.quantity,
+    })),
+  ];
 }
 
 /** A normalized sale -> the drawer form (grams back to kg). */
@@ -171,7 +176,6 @@ export function saleToForm(s) {
     id: l.id ?? "",
     name: l.name ?? "",
     qty: l.quantity != null ? gmToKg(l.quantity) : "",
-    bundles: l.bundles != null ? String(l.bundles) : "",
   });
 
   // Byproduct lines carry their source material, same as the picker does.

@@ -85,7 +85,9 @@ function saleItemsLabel(sale) {
 /* -------------------------------- pieces ---------------------------------- */
 
 function Skeleton({ className = "" }) {
-  return <div className={`animate-pulse rounded bg-slate-100 ${className}`} />;
+  return (
+    <div className={`animate-pulse rounded-md bg-slate-100 ${className}`} />
+  );
 }
 
 /** Panel-sized placeholder for a failed fetch or an empty period. */
@@ -162,7 +164,7 @@ function Panel({ title, action, to, children, className = "" }) {
         {action && (
           <Link
             to={to}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-[#1E4D96] hover:underline"
+            className="-my-2 -mr-2 inline-flex items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-[#1E4D96] hover:underline"
           >
             {action} <ArrowRight size={13} />
           </Link>
@@ -389,7 +391,7 @@ export default function Dashboard() {
                       className="flex items-center gap-1.5 text-xs text-slate-500"
                     >
                       <span
-                        className="h-2.5 w-2.5 rounded-sm"
+                        className="h-2.5 w-2.5 rounded-full"
                         style={{ background: color }}
                       />
                       {name}
@@ -508,7 +510,7 @@ export default function Dashboard() {
                     >
                       <span className="flex items-center gap-2 text-slate-500">
                         <span
-                          className="h-2 w-2 rounded-sm"
+                          className="h-2 w-2 rounded-full"
                           style={{ background: d.color }}
                         />
                         {d.name}

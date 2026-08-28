@@ -89,12 +89,12 @@ function buildProductionPayload(form) {
     }))
     .filter((b) => b.byProductName && b.qty > 0);
 
-  // productSize / productQty / productBundles are an optional TRIO — omit all
-  // three on a byproduct-only run rather than sending "" and 0, which would
-  // read as "size set, quantity missing" to the API.
+  // productSize / productQty are an optional PAIR — omit both on a byproduct-only
+  // run rather than sending "" and 0, which would read as "size set, quantity
+  // missing" to the API. productBundles is independent: the backend stores it on
+  // the production record only and no longer requires it alongside the pair.
   const size = String(form.productSize).trim();
-  const hasProduct =
-    size !== "" && Number(form.howMany) > 0 && Number(form.productBundles) > 0;
+  const hasProduct = size !== "" && Number(form.howMany) > 0;
 
   // Balance patta is its own optional pair, and creates/updates a raw-material
   // row from this size plus the source sheet's point and grade.
@@ -105,11 +105,10 @@ function buildProductionPayload(form) {
   return {
     rawMaterialId: form.rawMaterialId,
     ...(hasProduct
-      ? {
-          productSize: size,
-          productQty: kgToGm(form.howMany),
-          productBundles: Number(form.productBundles),
-        }
+      ? { productSize: size, productQty: kgToGm(form.howMany) }
+      : {}),
+    ...(Number(form.productBundles) > 0
+      ? { productBundles: Number(form.productBundles) }
       : {}),
     ...(hasBalancePatta
       ? {

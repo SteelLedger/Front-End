@@ -45,7 +45,7 @@ function Field({ label, required, children }) {
  * Quantity stays editable in place — a typo shouldn't mean re-picking the item;
  * the item itself is fixed (remove and re-add to change it).
  */
-function AddedChip({ line, stockGm, showBundles, onQty, onBundles, onRemove }) {
+function AddedChip({ line, stockGm, onQty, onRemove }) {
   const overBy = Math.max(0, kgToGm(line.qty) - stockGm);
   return (
     <span
@@ -77,19 +77,6 @@ function AddedChip({ line, stockGm, showBundles, onQty, onBundles, onRemove }) {
         className="w-12 shrink-0 rounded-md border border-transparent bg-slate-100/80 px-1.5 py-0.5 text-right text-sm font-semibold text-slate-800 hover:border-slate-300 focus:border-[#1E4D96] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#1E4D96]/30"
       />
       <span className="shrink-0 text-[11px] text-slate-400">kg</span>
-      {showBundles && (
-        <>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={line.bundles}
-            onChange={(e) => onBundles(e.target.value.replace(/[^0-9]/g, ""))}
-            aria-label={`Bundles for ${line.name}`}
-            className="w-9 shrink-0 rounded-md border border-transparent bg-slate-100/80 px-1.5 py-0.5 text-right text-sm font-semibold text-slate-800 hover:border-slate-300 focus:border-[#1E4D96] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#1E4D96]/30"
-          />
-          <span className="shrink-0 text-[11px] text-slate-400">bdl</span>
-        </>
-      )}
       <button
         type="button"
         onClick={onRemove}
@@ -120,11 +107,8 @@ function LineSection({
   placeholder,
   noun,
   invalid,
-  // Product lines carry a bundle count; by-product lines have no such field.
-  requireBundles = false,
 }) {
   const qtyRef = useRef(null);
-  const bundlesRef = useRef(null);
   const totalGm = linesTotalGm(lines);
 
   // An item already on the sale shouldn't be offered again — edit its row.
@@ -133,7 +117,7 @@ function LineSection({
   const draftOverBy = selected
     ? Math.max(0, kgToGm(draft.qty) - selected.totalQtyGm)
     : 0;
-  const canAdd = isCompleteLine(draft, requireBundles);
+  const canAdd = isCompleteLine(draft);
 
   const stockOf = (id) =>
     options.find((o) => o.id === id)?.totalQtyGm ?? Infinity;
@@ -154,7 +138,7 @@ function LineSection({
 
   return (
     <section
-      className={`rounded-xl border p-3 ${
+      className={`rounded-2xl border p-3 ${
         invalid
           ? "border-rose-300 bg-rose-50/40"
           : "border-slate-200 bg-slate-50/60"
@@ -209,14 +193,9 @@ function LineSection({
               value={draft.qty}
               onChange={(e) => onDraftChange({ ...draft, qty: e.target.value })}
               onKeyDown={(e) => {
-                // Enter adds the line so a run of items can be keyed in fast —
-                // or moves on to bundles when the line still needs one.
+                // Enter adds the line so a run of items can be keyed in fast.
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  if (requireBundles && !(Number(draft.bundles) > 0)) {
-                    bundlesRef.current?.focus();
-                    return;
-                  }
                   commit();
                 }
               }}
@@ -228,34 +207,6 @@ function LineSection({
               kg
             </span>
           </div>
-          {requireBundles && (
-            <div className="relative flex-1 sm:w-24 sm:flex-none">
-              <input
-                ref={bundlesRef}
-                type="text"
-                inputMode="numeric"
-                value={draft.bundles}
-                onChange={(e) =>
-                  onDraftChange({
-                    ...draft,
-                    bundles: e.target.value.replace(/[^0-9]/g, ""),
-                  })
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    commit();
-                  }
-                }}
-                placeholder="Bundles"
-                aria-label="Bundles"
-                className={`${FIELD} ${OK} pr-8 text-right`}
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
-                bdl
-              </span>
-            </div>
-          )}
           <button
             type="button"
             onClick={commit}
@@ -306,15 +257,9 @@ function LineSection({
               key={line.id}
               line={line}
               stockGm={stockOf(line.id)}
-              showBundles={requireBundles}
               onQty={(qty) =>
                 onLinesChange(
                   lines.map((l, idx) => (idx === i ? { ...l, qty } : l)),
-                )
-              }
-              onBundles={(bundles) =>
-                onLinesChange(
-                  lines.map((l, idx) => (idx === i ? { ...l, bundles } : l)),
                 )
               }
               onRemove={() =>
@@ -394,8 +339,7 @@ export default function AddSaleDrawer({
   const commitDraft = (key) =>
     setFormState((f) => {
       const line = f.draft[key];
-      const needsBundles = key === "products";
-      if (!isCompleteLine(line, needsBundles)) return f;
+      if (!isCompleteLine(line)) return f;
       return {
         ...f,
         [key]: [...f[key], line],
@@ -417,7 +361,7 @@ export default function AddSaleDrawer({
   };
   // A finished-but-unadded composer row still counts — losing it on save would
   // be a nasty surprise, so it gets committed for us at submit time.
-  const pendingProducts = isCompleteLine(draft.products, true)
+  const pendingProducts = isCompleteLine(draft.products)
     ? [draft.products]
     : [];
   const pendingByProducts = isCompleteLine(draft.byProducts)
@@ -445,7 +389,7 @@ export default function AddSaleDrawer({
           ? "Pick the party from the list."
           : "Fill in the invoice details.";
     } else if (
-      isPartialLine(draft.products, true) ||
+      isPartialLine(draft.products) ||
       isPartialLine(draft.byProducts)
     ) {
       error =
@@ -512,7 +456,7 @@ export default function AddSaleDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+            className="-m-2 rounded-md p-2 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
           >
             <X size={20} />
           </button>
@@ -597,7 +541,6 @@ export default function AddSaleDrawer({
               tone="bg-blue-100 text-[#1E4D96]"
               lines={formState.products}
               draft={draft.products}
-              requireBundles
               options={productOptions}
               onDraftChange={setDraft("products")}
               onCommit={() => commitDraft("products")}

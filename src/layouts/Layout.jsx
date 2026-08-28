@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clearSession, getDisplayUser, isAdmin } from "../utils/auth";
 import { PageHeaderContext } from "../context/pageHeader";
 import DateFilterBar from "../components/DateFilterBar";
+import ChangePasswordModal from "../components/ChangePasswordModal";
 
 // ── Nav ───────────────────────────────────────────────────────────
 const NAV_SECTIONS = [
@@ -32,9 +33,15 @@ const NAV_SECTIONS = [
   {
     section: "More",
     items: [
-      { label: "Reports", icon: ChartIcon, path: "/reports" },
+      { label: "Reports", icon: ChartIcon, path: "/reports", adminOnly: true },
       // Every /users endpoint is admin-only, so the item is too.
       { label: "Members", icon: TeamIcon, path: "/members", adminOnly: true },
+      {
+        label: "Action Log",
+        icon: HistoryIcon,
+        path: "/action-logs",
+        adminOnly: true,
+      },
       { label: "Settings", icon: SettingsIcon, path: "/settings" },
     ],
   },
@@ -52,6 +59,7 @@ const PAGE_SUBTITLES = {
   "/inventory": "Raw material stock on hand by specification",
   "/reports": "Insights into your business performance",
   "/members": "Invite teammates and manage what they can access",
+  "/action-logs": "Who changed what, across the last 30 days",
   "/settings": "Your account details and sign-in security",
 };
 
@@ -88,6 +96,8 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  // Reachable from any screen via the user menu, so the modal lives here.
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const userMenuRef = useRef(null);
@@ -189,7 +199,7 @@ export default function Layout() {
           {!collapsed && (
             <button
               onClick={() => setCollapsed(true)}
-              className="w-6 h-6 rounded-md bg-white/10 hover:bg-white/20 flex items-center justify-center text-blue-300 transition-colors"
+              className="hidden w-7 h-7 rounded-md bg-white/10 hover:bg-white/20 lg:flex items-center justify-center text-blue-300 transition-colors"
               aria-label="Collapse sidebar"
             >
               <ChevronLeftIcon />
@@ -351,7 +361,7 @@ export default function Layout() {
               <button
                 onClick={() => {
                   setUserMenuOpen(false);
-                  handleNav("/settings");
+                  setPasswordOpen(true);
                 }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-[15px] font-medium text-slate-700 hover:bg-blue-50 transition-colors"
               >
@@ -454,6 +464,11 @@ export default function Layout() {
           </PageHeaderContext.Provider>
         </main>
       </div>
+
+      <ChangePasswordModal
+        open={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+      />
     </div>
   );
 }
@@ -621,6 +636,31 @@ function TeamIcon() {
       <circle cx="8" cy="6.5" r="3" />
       <path d="M2 17c0-3.3 2.7-6 6-6 1 0 1.9.2 2.7.6" />
       <path d="M15.5 10.5l3 1.1v2.2c0 1.7-1.2 3.2-3 3.7-1.8-.5-3-2-3-3.7v-2.2l3-1.1z" />
+    </svg>
+  );
+}
+// A clock winding backwards — the audit trail, not a schedule.
+function HistoryIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      width="18"
+      height="18"
+    >
+      <path
+        d="M3 10a7 7 0 1 0 2.1-5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M2.6 2.4v3.2h3.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M10 6v4.3l2.8 1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

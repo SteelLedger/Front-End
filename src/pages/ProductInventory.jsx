@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Boxes, Package, PackageCheck, PackageX } from "lucide-react";
 import InventoryTab from "../components/InventoryTab";
 import ByproductsModal from "../components/ByproductsModal";
@@ -7,7 +8,6 @@ import {
   GetProducts,
   GetByProducts,
   GetProductions,
-  getProductionById,
 } from "../services/apiServices";
 
 function statusBadge(status) {
@@ -43,7 +43,8 @@ const extractProducts = extractInv("products");
 const extractByProducts = extractInv("byProducts");
 
 const normalizeProduct = (raw) => ({
-  id: raw.productName,
+  // The real inventory id — the history page passes it as `productId`.
+  id: raw._id ?? raw.id ?? raw.productName,
   productName: raw.productName || "—",
   productSize: raw.productSize || "—",
   rawMaterialName: raw.rawMaterialName || "—",
@@ -71,7 +72,13 @@ const PRODUCT_COLUMNS = [
     label: "Product",
     sortField: "productName",
     render: (r) => (
-      <span className="font-medium text-slate-800">{r.productName}</span>
+      <Link
+        to={`/product-inventory/${r.id}`}
+        className="-my-1.5 rounded-md py-1.5 font-medium text-[#1E4D96] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
+        title={`View production history for ${r.productName}`}
+      >
+        {r.productName}
+      </Link>
     ),
   },
   {
@@ -215,37 +222,28 @@ export default function ProductInventory() {
       byProducts: [],
     });
     try {
-      const listRes = await GetProductions({
-        search: row.productName,
-        limit: 100,
-      });
+      // `productId` matches the inventory row exactly, and the list already
+      // carries each run's byProducts — this used to search by name and then
+      // fetch every production by id, one request apiece.
+      const listRes = await GetProductions({ productId: row.id, limit: 100 });
       const d = listRes?.data?.data ?? {};
-      const prods = Array.isArray(d) ? d : (d.productions ?? []);
-      const matching = prods
-        .filter((p) => (p.productName || "") === row.productName)
-        .slice(0, 50);
-      const details = await Promise.all(
-        matching.map((p) =>
-          getProductionById(p._id ?? p.id)
-            .then((r) => r?.data?.data ?? r?.data ?? {})
-            .catch(() => ({})),
-        ),
-      );
-      const map = new Map();
-      details.forEach((det) => {
-        (det.byProducts || []).forEach((bp) => {
+      const runs = Array.isArray(d) ? d : (d.productions ?? []);
+
+      const totals = new Map();
+      runs.forEach((run) => {
+        (run.byProducts || []).forEach((bp) => {
           const name = bp.byProductName || "—";
-          map.set(name, (map.get(name) || 0) + (Number(bp.qty) || 0));
+          totals.set(name, (totals.get(name) || 0) + (Number(bp.qty) || 0));
         });
       });
-      const byProducts = [...map.entries()].map(([byProductName, qty]) => ({
-        byProductName,
-        qty,
-      }));
+
       setViewState({
         loading: false,
         productName: row.productName,
-        byProducts,
+        byProducts: [...totals.entries()].map(([byProductName, qty]) => ({
+          byProductName,
+          qty,
+        })),
       });
     } catch {
       setViewState({

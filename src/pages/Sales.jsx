@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import AddSaleDrawer from "../components/AddSaleDrawer";
 import ConfirmDialog from "../components/ConfirmDialog";
+import SaleItemsModal from "../components/SaleItemsModal";
 import MenuPopover from "../components/MenuPopover";
 import FilterSelect from "../components/FilterSelect";
 import { usePageHeader } from "../context/pageHeader";
@@ -29,6 +30,7 @@ import {
   PAYMENT_TYPES,
   paymentTypeLabel,
   byProductLabel,
+  saleLines,
   emptySaleForm,
   buildSalePayload,
   normalizeSale,
@@ -85,7 +87,7 @@ function SortIcon({ active, dir }) {
 function Th({ label, field, sortBy, sortOrder, onSort, align }) {
   const right = align === "right";
   return (
-    <th className={`px-4 py-3 font-semibold ${right ? "text-right" : ""}`}>
+    <th className={`px-3 py-3 font-semibold ${right ? "text-right" : ""}`}>
       {field ? (
         // `uppercase` is repeated here because the preflight resets
         // text-transform on <button>, so it wouldn't inherit from the row.
@@ -126,7 +128,7 @@ function RowMenu({ onEdit, onDelete }) {
         aria-label="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`rounded-md p-1.5 transition-colors hover:bg-slate-100 hover:text-slate-600 ${
+        className={`rounded-md p-2 transition-colors hover:bg-slate-100 hover:text-slate-600 ${
           open ? "bg-slate-100 text-slate-600" : "text-slate-400"
         }`}
       >
@@ -181,30 +183,45 @@ function IconBtn({ icon: Icon, label, onClick, className = "" }) {
   );
 }
 
-// How many item lines show before the row collapses the rest behind "+N more".
-const COLLAPSED_LINES = 3;
-
 /**
- * A sale's products and byproducts as one ordered list for the Items cell.
- * Products first, then byproducts — each carrying the kind so the row can dot
- * them, and byproducts labelled with their source material.
+ * A sale's items in one line: the first one, then a pill for the rest. Keeping
+ * it to a single line is what makes every row the same height — the full list
+ * lives in the items modal.
  */
-function saleLines(sale) {
-  return [
-    ...sale.products.map((p) => ({
-      key: `p-${p.id || p.name}`,
-      kind: "product",
-      label: p.name || "—",
-      quantity: p.quantity,
-      bundles: p.bundles,
-    })),
-    ...sale.byProducts.map((b) => ({
-      key: `b-${b.id || b.name}`,
-      kind: "byproduct",
-      label: byProductLabel(b.name, b.rawMaterialName) || "—",
-      quantity: b.quantity,
-    })),
-  ];
+function SaleLines({ sale, onOpen }) {
+  const lines = saleLines(sale);
+  if (!lines.length) return <span className="text-slate-400">—</span>;
+  const [first, ...rest] = lines;
+
+  return (
+    <div className="flex items-center gap-2 whitespace-nowrap text-xs">
+      <span
+        title={first.kind === "product" ? "Product" : "Byproduct"}
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+          first.kind === "product" ? "bg-[#1E4D96]" : "bg-violet-500"
+        }`}
+      />
+      <span
+        className="max-w-[7rem] truncate font-medium text-slate-700 2xl:max-w-[12rem]"
+        title={first.label}
+      >
+        {first.label}
+      </span>
+      <span className="text-slate-400">{gmToKgDisplay(first.quantity)} kg</span>
+      {rest.length > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="-my-2 rounded-md bg-blue-50 px-2 py-2 text-[11px] font-semibold text-[#1E4D96] transition-colors hover:bg-blue-100"
+        >
+          +{rest.length} more
+        </button>
+      )}
+    </div>
+  );
 }
 
 /* --------------------------------- helpers -------------------------------- */
@@ -322,7 +339,7 @@ export default function Sales() {
   const [products, setProducts] = useState([]);
   const [byProducts, setByProducts] = useState([]);
   // Which invoice has its item breakdown open.
-  const [expandedId, setExpandedId] = useState(null);
+  const [openSale, setOpenSale] = useState(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const { fromDate, toDate } = dateRange;
@@ -573,13 +590,6 @@ export default function Sales() {
                 </span>
                 <span className="hidden h-3 w-px bg-slate-300 sm:inline-block" />
                 <span>
-                  Bundles:{" "}
-                  <span className="font-semibold text-slate-700">
-                    {summary.totalProductBundles || 0}
-                  </span>
-                </span>
-                <span className="hidden h-3 w-px bg-slate-300 sm:inline-block" />
-                <span>
                   Byproducts:{" "}
                   <span className="font-semibold text-slate-700">
                     {gmToKgDisplay(summary.totalByProductQty || 0)} kg
@@ -660,20 +670,10 @@ export default function Sales() {
                 />
               )}
               <IconBtn
-                icon={BarChart3}
-                label="Sales graph"
-                onClick={() => notBuilt("The sales graph")}
-              />
-              <IconBtn
                 icon={exporting ? Loader2 : FileSpreadsheet}
                 label="Export to Excel"
                 className={`hover:text-emerald-600 ${exporting ? "animate-spin" : ""}`}
                 onClick={exporting ? () => {} : handleExport}
-              />
-              <IconBtn
-                icon={Printer}
-                label="Print list"
-                onClick={() => notBuilt("Printing")}
               />
             </div>
           </div>
@@ -706,74 +706,39 @@ export default function Sales() {
             <>
               {/* Phones get cards — the table needs 1060px. */}
               <div className="divide-y divide-slate-100 xl:hidden">
-                {sales.map((s) => {
-                  const lines = saleLines(s);
-                  const open = expandedId === s.id;
-                  const shown = open ? lines : lines.slice(0, COLLAPSED_LINES);
-                  const hidden = lines.length - shown.length;
-                  return (
-                    <div key={s.id} className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-[#1E4D96]">
-                            {s.partyName || "—"}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-slate-400">
-                            {s.invoiceNumber || "—"} · {s.date || "—"} ·{" "}
-                            {paymentTypeLabel(s.paymentType)}
-                          </p>
-                        </div>
+                {sales.map((s) => (
+                  <div
+                    key={s.id}
+                    onClick={() => setOpenSale(s)}
+                    className="cursor-pointer p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-[#1E4D96]">
+                          {s.partyName || "—"}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-slate-400">
+                          {s.invoiceNumber || "—"} · {s.date || "—"} ·{" "}
+                          {paymentTypeLabel(s.paymentType)}
+                        </p>
+                      </div>
+                      <span onClick={(e) => e.stopPropagation()}>
                         <RowMenu
                           onEdit={() => openEdit(s)}
                           onDelete={() => requestDelete(s)}
                         />
-                      </div>
-                      <div className="mt-2.5 space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
-                        {shown.map((l) => (
-                          <div
-                            key={l.key}
-                            className="flex items-baseline justify-between gap-3"
-                          >
-                            <span className="flex min-w-0 items-baseline gap-1.5">
-                              <span
-                                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                                  l.kind === "product"
-                                    ? "bg-[#1E4D96]"
-                                    : "bg-violet-500"
-                                }`}
-                              />
-                              <span className="truncate text-slate-700">
-                                {l.label}
-                              </span>
-                            </span>
-                            <span className="shrink-0 whitespace-nowrap font-medium text-slate-600">
-                              {gmToKgDisplay(l.quantity)} kg
-                              {l.kind === "product" && (
-                                <span className="ml-1 font-normal text-slate-400">
-                                  · {l.bundles || 0} bdl
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        ))}
-                        {(hidden > 0 || open) && (
-                          <button
-                            type="button"
-                            onClick={() => setExpandedId(open ? null : s.id)}
-                            className="text-xs font-semibold text-[#1E4D96]"
-                          >
-                            {open ? "Show less" : `+${hidden} more`}
-                          </button>
-                        )}
-                      </div>
-                      <div className="mt-2 text-right text-xs">
-                        <span className="font-semibold text-slate-800">
-                          {gmToKgDisplay(s.totalQuantity)} kg
-                        </span>
-                      </div>
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className="mt-2.5 overflow-hidden rounded-lg bg-slate-50 px-3 py-2">
+                      <SaleLines sale={s} onOpen={() => setOpenSale(s)} />
+                    </div>
+                    <div className="mt-2 text-right text-xs">
+                      <span className="font-semibold text-slate-800">
+                        {gmToKgDisplay(s.totalQuantity)} kg
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="hidden overflow-x-auto xl:block">
@@ -796,123 +761,67 @@ export default function Sales() {
                       {/* Not sortable: a multi-item sale has no single quantity,
                           and the API dropped `quantity` from its sortBy enum. */}
                       <Th label="Quantity" align="right" />
-                      <th className="w-32 px-4 py-3 text-right font-semibold">
+                      <th className="w-28 px-3 py-3 text-right font-semibold">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {sales.map((s) => {
-                      const lines = saleLines(s);
-                      const open = expandedId === s.id;
-                      const shown = open
-                        ? lines
-                        : lines.slice(0, COLLAPSED_LINES);
-                      const hidden = lines.length - shown.length;
-                      return (
-                        <tr
-                          key={s.id}
-                          className="align-top hover:bg-slate-50/70"
-                        >
-                          <td className="whitespace-nowrap px-4 py-3 text-slate-500">
-                            {s.date || "—"}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-slate-700">
-                            {s.invoiceNumber || "—"}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-[#1E4D96]">
+                    {sales.map((s) => (
+                      <tr key={s.id} className="hover:bg-slate-50/70">
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-500">
+                          {s.date || "—"}
+                        </td>
+                        <td className="px-3 py-3 font-medium text-slate-700">
+                          {s.invoiceNumber || "—"}
+                        </td>
+                        {/* A long party name would wrap and make this row
+                            taller than its neighbours — clip it instead. */}
+                        <td className="px-3 py-3 font-medium text-[#1E4D96]">
+                          <span
+                            className="block max-w-[9rem] truncate 2xl:max-w-[14rem]"
+                            title={s.partyName}
+                          >
                             {s.partyName || "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            {lines.length === 0 ? (
-                              <span className="text-slate-400">—</span>
-                            ) : (
-                              <div className="min-w-[15rem] space-y-1">
-                                {shown.map((l) => (
-                                  <div
-                                    key={l.key}
-                                    className="flex items-baseline justify-between gap-3"
-                                  >
-                                    <span className="flex min-w-0 items-baseline gap-1.5">
-                                      <span
-                                        title={
-                                          l.kind === "product"
-                                            ? "Product"
-                                            : "Byproduct"
-                                        }
-                                        className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                                          l.kind === "product"
-                                            ? "bg-[#1E4D96]"
-                                            : "bg-violet-500"
-                                        }`}
-                                      />
-                                      <span
-                                        className="truncate text-slate-700"
-                                        title={l.label}
-                                      >
-                                        {l.label}
-                                      </span>
-                                    </span>
-                                    <span className="shrink-0 whitespace-nowrap font-medium text-slate-600">
-                                      {gmToKgDisplay(l.quantity)} kg
-                                      {l.kind === "product" && (
-                                        <span className="ml-1.5 font-normal text-slate-400">
-                                          · {l.bundles || 0} bdl
-                                        </span>
-                                      )}
-                                    </span>
-                                  </div>
-                                ))}
-                                {(hidden > 0 || open) && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setExpandedId(open ? null : s.id)
-                                    }
-                                    aria-expanded={open}
-                                    className="text-xs font-semibold text-[#1E4D96] hover:underline"
-                                  >
-                                    {open ? "Show less" : `+${hidden} more`}
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            {paymentTypeLabel(s.paymentType)}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-800">
-                            {gmToKgDisplay(s.totalQuantity)} kg
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => notBuilt("Invoice printing")}
-                                aria-label={`Print invoice ${s.invoiceNumber}`}
-                                title="Print"
-                                className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
-                              >
-                                <Printer size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => notBuilt("Sharing")}
-                                aria-label={`Share invoice ${s.invoiceNumber}`}
-                                title="Share"
-                                className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
-                              >
-                                <Share2 size={15} />
-                              </button>
-                              <RowMenu
-                                onEdit={() => openEdit(s)}
-                                onDelete={() => requestDelete(s)}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          </span>
+                        </td>
+                        <td className="max-w-[20rem] px-3 py-3">
+                          <SaleLines sale={s} onOpen={() => setOpenSale(s)} />
+                        </td>
+                        <td className="px-3 py-3 text-slate-600">
+                          {paymentTypeLabel(s.paymentType)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right font-medium text-slate-800">
+                          {gmToKgDisplay(s.totalQuantity)} kg
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => notBuilt("Invoice printing")}
+                              aria-label={`Print invoice ${s.invoiceNumber}`}
+                              title="Print"
+                              className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                            >
+                              <Printer size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => notBuilt("Sharing")}
+                              aria-label={`Share invoice ${s.invoiceNumber}`}
+                              title="Share"
+                              className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                            >
+                              <Share2 size={15} />
+                            </button>
+                            <RowMenu
+                              onEdit={() => openEdit(s)}
+                              onDelete={() => requestDelete(s)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -928,7 +837,7 @@ export default function Sales() {
                       disabled={page <= 1}
                       onClick={() => setPage((n) => Math.max(1, n - 1))}
                       aria-label="Previous page"
-                      className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <ChevronLeft size={16} />
                     </button>
@@ -939,7 +848,7 @@ export default function Sales() {
                         setPage((n) => Math.min(totalPages, n + 1))
                       }
                       aria-label="Next page"
-                      className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <ChevronRight size={16} />
                     </button>
@@ -962,6 +871,12 @@ export default function Sales() {
         byProductOptions={byProducts}
         onClose={() => setDrawerOpen(false)}
         onSubmit={handleSave}
+      />
+
+      <SaleItemsModal
+        open={!!openSale}
+        sale={openSale}
+        onClose={() => setOpenSale(null)}
       />
 
       <ConfirmDialog

@@ -19,6 +19,7 @@ import RawMaterialDrawer from "../components/RawMaterialDrawer";
 import { usePageHeader } from "../context/pageHeader";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import ConfirmDialog from "../components/ConfirmDialog";
+import PurchaseBillModal from "../components/PurchaseBillModal";
 import { emptyPartyForm, buildPartyPayload } from "../utils/party";
 import { gmToKgDisplay } from "../utils/units";
 import {
@@ -41,37 +42,32 @@ import {
 
 const PAGE_SIZE = 10;
 
-// How many item lines show before a bill collapses the rest behind "+N more".
-const COLLAPSED_LINES = 2;
-
-/** The item lines on a bill, collapsed to the first couple until expanded. */
-function PurchaseLines({ lines = [], expanded, onToggle }) {
+/**
+ * A bill's items in one line: the first material, then a pill for the rest.
+ * Keeping it to a single line is what makes every row the same height — the
+ * full breakdown lives in the bill modal.
+ */
+function PurchaseLines({ lines = [], onOpen }) {
   if (!lines.length) return <span className="text-slate-400">—</span>;
-  const shown = expanded ? lines : lines.slice(0, COLLAPSED_LINES);
-  const hidden = lines.length - shown.length;
+  const [first, ...rest] = lines;
 
   return (
-    <div className="space-y-1">
-      {shown.map((l, i) => (
-        <div
-          key={i}
-          className="flex items-baseline gap-2 whitespace-nowrap text-xs"
-        >
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1E4D96]" />
-          <span className="font-medium text-slate-700">{lineLabel(l)}</span>
-          <span className="text-slate-400">
-            {gmToKgDisplay(l.quantity || 0)} kg · {l.bundles || 0}{" "}
-            {l.bundles === 1 ? "bundle" : "bundles"}
-          </span>
-        </div>
-      ))}
-      {(hidden > 0 || expanded) && (
+    <div className="flex items-center gap-2 whitespace-nowrap text-xs">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1E4D96]" />
+      <span className="font-medium text-slate-700">{lineLabel(first)}</span>
+      <span className="text-slate-400">
+        {gmToKgDisplay(first.quantity || 0)} kg
+      </span>
+      {rest.length > 0 && (
         <button
           type="button"
-          onClick={onToggle}
-          className="text-xs font-semibold text-[#1E4D96] hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="-my-2 rounded-md bg-blue-50 px-2 py-2 text-[11px] font-semibold text-[#1E4D96] transition-colors hover:bg-blue-100"
         >
-          {expanded ? "Show less" : `+${hidden} more`}
+          +{rest.length} more
         </button>
       )}
     </div>
@@ -80,7 +76,7 @@ function PurchaseLines({ lines = [], expanded, onToggle }) {
 
 function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
       <span
         className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
@@ -168,8 +164,8 @@ export default function Purchase() {
   const [saving, setSaving] = useState(false);
 
   const [confirmState, setConfirmState] = useState(null);
-  // Which bill has its full item breakdown open.
-  const [expandedId, setExpandedId] = useState(null);
+  // Which bill's full breakdown is open in the modal.
+  const [openBill, setOpenBill] = useState(null);
 
   // Suppliers (parties) for the drawer dropdown.
   const [suppliers, setSuppliers] = useState([]);
@@ -471,7 +467,11 @@ export default function Purchase() {
               {/* Phones get cards — this table needs 760px to breathe. */}
               <div className="divide-y divide-slate-100 xl:hidden">
                 {purchases.map((p) => (
-                  <div key={p.id} className="p-4">
+                  <div
+                    key={p.id}
+                    onClick={() => setOpenBill(p)}
+                    className="cursor-pointer p-4"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-slate-800">
@@ -481,7 +481,10 @@ export default function Purchase() {
                           {p.invoiceNumber || "—"} · {p.date || "—"}
                         </p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1">
+                      <div
+                        className="flex shrink-0 items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <button
                           type="button"
                           onClick={() => openEditDrawer(p)}
@@ -503,10 +506,7 @@ export default function Purchase() {
                     <div className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2">
                       <PurchaseLines
                         lines={p.lineItems}
-                        expanded={expandedId === p.id}
-                        onToggle={() =>
-                          setExpandedId((id) => (id === p.id ? null : p.id))
-                        }
+                        onOpen={() => setOpenBill(p)}
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
@@ -555,7 +555,11 @@ export default function Purchase() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {purchases.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-50/70">
+                      <tr
+                        key={p.id}
+                        onClick={() => setOpenBill(p)}
+                        className="cursor-pointer hover:bg-slate-50/70"
+                      >
                         <td className="py-3 px-4 font-medium text-slate-700">
                           {p.invoiceNumber || "—"}
                         </td>
@@ -568,10 +572,7 @@ export default function Purchase() {
                         <td className="py-3 px-4 text-slate-600">
                           <PurchaseLines
                             lines={p.lineItems}
-                            expanded={expandedId === p.id}
-                            onToggle={() =>
-                              setExpandedId((id) => (id === p.id ? null : p.id))
-                            }
+                            onOpen={() => setOpenBill(p)}
                           />
                         </td>
                         <td className="py-3 px-4 text-right font-medium text-slate-700">
@@ -580,7 +581,10 @@ export default function Purchase() {
                         <td className="py-3 px-4 text-right font-medium text-slate-800 whitespace-nowrap">
                           {gmToKgDisplay(p.totalQuantity || 0)} kg
                         </td>
-                        <td className="py-3 px-4">
+                        <td
+                          className="py-3 px-4"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
@@ -618,7 +622,7 @@ export default function Purchase() {
                       type="button"
                       disabled={page <= 1}
                       onClick={() => setPage((n) => Math.max(1, n - 1))}
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Previous page"
                     >
                       <ChevronLeft size={16} />
@@ -629,7 +633,7 @@ export default function Purchase() {
                       onClick={() =>
                         setPage((n) => Math.min(totalPages, n + 1))
                       }
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Next page"
                     >
                       <ChevronRight size={16} />
@@ -666,6 +670,12 @@ export default function Purchase() {
         lockPartyType
         onClose={() => setPartyOpen(false)}
         onSubmit={handleSaveSupplier}
+      />
+
+      <PurchaseBillModal
+        open={!!openBill}
+        bill={openBill}
+        onClose={() => setOpenBill(null)}
       />
 
       <ConfirmDialog

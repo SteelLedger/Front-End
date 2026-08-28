@@ -32,7 +32,7 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
+        className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
           active
             ? "border-[#BBD0EC] bg-[#EEF3FB] text-[#1E4D96]"
             : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"

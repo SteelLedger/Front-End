@@ -51,7 +51,7 @@ const dash = (v) => (v && String(v).trim() ? v : "—");
 
 function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
       <span
         className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
@@ -323,7 +323,7 @@ export default function Inventory() {
                         <td className="py-3 px-4 whitespace-nowrap">
                           <Link
                             to={`/inventory/${g.id}`}
-                            className="font-medium text-[#1E4D96] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 rounded"
+                            className="font-medium text-[#1E4D96] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 rounded-md"
                             title={`View purchases for ${g.rawMaterialName}`}
                           >
                             {dash(g.rawMaterialName)}
@@ -370,7 +370,7 @@ export default function Inventory() {
                       type="button"
                       disabled={page <= 1}
                       onClick={() => setPage((n) => Math.max(1, n - 1))}
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Previous page"
                     >
                       <ChevronLeft size={16} />
@@ -381,7 +381,7 @@ export default function Inventory() {
                       onClick={() =>
                         setPage((n) => Math.min(totalPages, n + 1))
                       }
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Next page"
                     >
                       <ChevronRight size={16} />

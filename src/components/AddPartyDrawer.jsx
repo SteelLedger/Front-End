@@ -275,7 +275,7 @@ export default function AddPartyDrawer({
         <button
           type="button"
           onClick={() => addAddress(kind)}
-          className="mt-2 flex items-center gap-1 text-xs font-semibold text-[#1E4D96] hover:underline"
+          className="-ml-2 mt-1.5 flex items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-[#1E4D96] hover:underline"
         >
           <Plus size={13} /> {addLabel}
         </button>
@@ -319,7 +319,7 @@ export default function AddPartyDrawer({
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="rounded hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+              className="-m-2 rounded-md p-2 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
             >
               <X size={20} />
             </button>
@@ -692,7 +692,7 @@ function TabButton({ active, onClick, children, badge }) {
     >
       {children}
       {badge && (
-        <span className="rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+        <span className="rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
           {badge}
         </span>
       )}

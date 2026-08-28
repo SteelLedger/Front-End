@@ -135,7 +135,7 @@ export default function LoginPage() {
               onClick={() => setShowPass((s) => !s)}
               title={showPass ? "Hide password" : "Show password"}
               aria-label={showPass ? "Hide password" : "Show password"}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute right-3.5 top-1/2 -mr-2 -translate-y-1/2 p-2 text-slate-400"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path
@@ -143,7 +143,13 @@ export default function LoginPage() {
                   stroke="#9CA3AF"
                   strokeWidth="1.3"
                 />
-                <circle cx="8" cy="8" r="1.8" stroke="#9CA3AF" strokeWidth="1.3" />
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="1.8"
+                  stroke="#9CA3AF"
+                  strokeWidth="1.3"
+                />
                 {showPass && (
                   <path
                     d="M3 3l10 10"
@@ -179,7 +185,7 @@ export default function LoginPage() {
 
         <button
           type="button"
-          className="flex w-full items-center justify-center gap-2.5 rounded-[10px] border-[1.5px] border-slate-200 bg-white py-2.5 text-sm font-medium text-[#0D2140] transition hover:bg-slate-50"
+          className="flex w-full items-center justify-center gap-2.5 rounded-lg border-[1.5px] border-slate-200 bg-white py-2.5 text-sm font-medium text-[#0D2140] transition hover:bg-slate-50"
         >
           <svg width="18" height="18" viewBox="0 0 18 18">
             <path
@@ -205,7 +211,10 @@ export default function LoginPage() {
 
       <p className="mt-7 text-center text-[13px] text-slate-500">
         Don't have an account?{" "}
-        <a href="#" className="font-semibold text-[#2563C4] no-underline">
+        <a
+          href="#"
+          className="-my-1.5 inline-block py-1.5 align-baseline font-semibold text-[#2563C4] no-underline"
+        >
           Request access
         </a>
       </p>

@@ -105,7 +105,7 @@ export default function MenuPopover({
       ref={panelRef}
       style={style}
       role="menu"
-      className={`z-[70] overflow-x-hidden overscroll-contain rounded-xl border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10 ${
+      className={`z-[70] overflow-x-hidden overscroll-contain rounded-2xl border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10 ${
         scrollable ? "overflow-y-auto" : "overflow-y-hidden"
       } ${className}`}
     >

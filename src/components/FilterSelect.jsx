@@ -33,7 +33,7 @@ export default function FilterSelect({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-full border text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
+        className={`inline-flex items-center gap-2 rounded-lg border text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
           compact ? "px-3 py-1.5" : "px-3.5 py-2"
         } ${
           active

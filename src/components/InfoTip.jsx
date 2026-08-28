@@ -17,7 +17,7 @@ export default function InfoTip({ text, size = 13 }) {
         onBlur={() => setOpen(false)}
         aria-label={text}
         title={text}
-        className="text-slate-400 transition-colors hover:text-[#1E4D96] focus:outline-none"
+        className="-m-2 p-2 text-slate-400 transition-colors hover:text-[#1E4D96] focus:outline-none"
       >
         <Info size={size} />
       </button>

@@ -124,7 +124,7 @@ export default function MemberDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+            className="-m-2 rounded-md p-2 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
           >
             <X size={20} />
           </button>

@@ -67,7 +67,7 @@ export default function AuthShell({ children }) {
           </div>
 
           {/* Mockup */}
-          <div className="w-full max-w-[360px] rounded-[14px] bg-white px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.25)] max-[640px]:max-w-full">
+          <div className="w-full max-w-[360px] rounded-2xl bg-white px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.25)] max-[640px]:max-w-full">
             <div className="mb-3.5 flex items-center justify-between border-b border-slate-100 pb-2.5">
               <span className="text-[13px] font-semibold text-[#0A1628]">
                 Today's Inventory
@@ -138,7 +138,7 @@ export function AuthButton({ loading, loadingLabel, children, ...props }) {
     <button
       type="submit"
       disabled={loading}
-      className="w-full rounded-[10px] bg-[#1E4D96] py-3 text-[15px] font-semibold text-white transition hover:-translate-y-px hover:bg-[#1A3F7A] disabled:cursor-not-allowed disabled:opacity-80"
+      className="w-full rounded-lg bg-[#1E4D96] py-3 text-[15px] font-semibold text-white transition hover:-translate-y-px hover:bg-[#1A3F7A] disabled:cursor-not-allowed disabled:opacity-80"
       {...props}
     >
       {loading ? (

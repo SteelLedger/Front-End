@@ -247,7 +247,7 @@ export default function RawMaterialDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+            className="-m-2 rounded-md p-2 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
           >
             <X size={20} />
           </button>
@@ -328,7 +328,7 @@ export default function RawMaterialDrawer({
               <button
                 type="button"
                 onClick={addLine}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[#1E4D96] transition-colors hover:bg-blue-50"
+                className="inline-flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold text-[#1E4D96] transition-colors hover:bg-blue-50"
               >
                 <Plus size={14} strokeWidth={2.5} /> Add Item
               </button>
