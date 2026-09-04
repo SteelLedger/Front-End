@@ -97,7 +97,9 @@ export default function PurchaseBillModal({ open, bill, onClose }) {
               <table className="hidden w-full text-sm sm:table">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-5 py-2.5 font-semibold">Material</th>
+                    <th className="px-5 py-2.5 font-semibold">
+                      Raw Material Sheet
+                    </th>
                     <th className="px-3 py-2.5 font-semibold">Size</th>
                     <th className="px-3 py-2.5 font-semibold">Point</th>
                     <th className="px-3 py-2.5 font-semibold">Grade</th>

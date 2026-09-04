@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import RawMaterialDrawer from "../components/RawMaterialDrawer";
 import { usePageHeader } from "../context/pageHeader";
+import { defaultDateRange } from "../utils/dateRange";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import ConfirmDialog from "../components/ConfirmDialog";
 import PurchaseBillModal from "../components/PurchaseBillModal";
@@ -55,9 +56,7 @@ function PurchaseLines({ lines = [], onOpen }) {
     <div className="flex items-center gap-2 whitespace-nowrap text-xs">
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1E4D96]" />
       <span className="font-medium text-slate-700">{lineLabel(first)}</span>
-      <span className="text-slate-400">
-        {gmToKgDisplay(first.quantity || 0)} kg
-      </span>
+
       {rest.length > 0 && (
         <button
           type="button"
@@ -143,8 +142,8 @@ export default function Purchase() {
   const [sortBy, setSortBy] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
-  // { fromDate, toDate } as DD/MM/YYYY — empty until a period is picked.
-  const [dateRange, setDateRange] = useState({});
+  // { fromDate, toDate } as DD/MM/YYYY — opens on the current month.
+  const [dateRange, setDateRange] = useState(defaultDateRange);
 
   usePageHeader({
     actionLabel: "Add Purchase",
@@ -459,7 +458,7 @@ export default function Purchase() {
               <p className="text-sm">
                 {debouncedQuery
                   ? "No purchases match your search."
-                  : "No purchases yet. Add your first one."}
+                  : "No purchases in this period. Add your first one."}
               </p>
             </div>
           ) : (
@@ -535,7 +534,9 @@ export default function Purchase() {
                       />
                       <th className="py-3 px-4 font-semibold">Supplier</th>
                       <SortHeader label="Date" field="date" {...sortProps} />
-                      <th className="py-3 px-4 font-semibold">Items</th>
+                      <th className="py-3 px-4 font-semibold">
+                        Raw Material Sheet
+                      </th>
                       <SortHeader
                         label="Bundles"
                         field="totalBundles"

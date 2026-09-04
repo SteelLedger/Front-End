@@ -19,6 +19,12 @@ import { gmToKgDisplay } from "../utils/units";
 
 const PAGE_SIZE = 10;
 
+const STATUS_CHIPS = [
+  { value: "all", label: "All" },
+  { value: "in_stock", label: "In stock" },
+  { value: "out_of_stock", label: "Out of stock" },
+];
+
 function normalizeRawMaterial(raw) {
   const totalQty = Number(raw.totalQty ?? raw.quantity ?? 0) || 0;
   return {
@@ -124,6 +130,7 @@ export default function Inventory() {
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [status, setStatus] = useState("all");
   const [sortBy, setSortBy] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
@@ -145,6 +152,7 @@ export default function Inventory() {
     try {
       const res = await GetRawMaterials({
         search: debouncedQuery,
+        status,
         sortBy: sortBy || undefined,
         sortOrder: sortBy ? sortOrder : undefined,
         page,
@@ -160,7 +168,7 @@ export default function Inventory() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, sortBy, sortOrder, page]);
+  }, [debouncedQuery, status, sortBy, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -209,9 +217,30 @@ export default function Inventory() {
         {/* Stock panel */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
-            <h2 className="text-base font-semibold text-slate-900">
-              Stock by Specification
-            </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-base font-semibold text-slate-900">
+                Stock by Specification
+              </h2>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {STATUS_CHIPS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => {
+                      setStatus(c.value);
+                      setPage(1);
+                    }}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                      status === c.value
+                        ? "bg-slate-900 text-white border-slate-900"
+                        : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="relative w-full sm:w-72">
               <Search
                 size={16}
@@ -255,8 +284,8 @@ export default function Inventory() {
             <div className="flex flex-col items-center justify-center text-center py-16 text-slate-400">
               <Inbox size={32} className="mb-2" />
               <p className="text-sm">
-                {debouncedQuery
-                  ? "No stock matches your search."
+                {debouncedQuery || status !== "all"
+                  ? "No stock matches your filters."
                   : "No stock yet. Add raw material from the Purchase tab."}
               </p>
             </div>
@@ -302,7 +331,7 @@ export default function Inventory() {
                   <thead>
                     <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
                       <SortHeader
-                        label="Raw Material"
+                        label="Raw Material Sheet"
                         field="rawMaterialName"
                         {...sortProps}
                       />

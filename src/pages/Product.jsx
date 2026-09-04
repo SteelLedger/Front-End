@@ -122,6 +122,37 @@ function buildProductionPayload(form) {
   };
 }
 
+/* ---------------------------------- sheets --------------------------------- */
+
+function toSheet(s) {
+  return {
+    id: s._id ?? s.id,
+    name:
+      s.rawMaterialName || [s.size, s.point, s.grade].filter(Boolean).join(" "),
+    size: s.size ?? "",
+    point: s.point ?? "",
+    grade: s.grade ?? "",
+    totalQtyGm: s.totalQty ?? 0,
+  };
+}
+
+/**
+ * The sheet a saved run was cut from. The drawer only offers in-stock sheets,
+ * so a run whose source has since dropped to zero would open with an empty
+ * Select Sheet — this puts its own sheet back on the list for that edit.
+ */
+function sheetFromProduction(d) {
+  const rm = typeof d.rawMaterialId === "object" ? d.rawMaterialId : null;
+  const id = rm?._id ?? d.rawMaterialId;
+  if (!id) return null;
+  const sheet = toSheet({
+    ...(rm ?? {}),
+    _id: id,
+    rawMaterialName: rm?.rawMaterialName ?? d.rawMaterialName,
+  });
+  return sheet.name ? sheet : null;
+}
+
 /* ----------------------------------- page ---------------------------------- */
 
 export default function Product() {
@@ -133,7 +164,8 @@ export default function Product() {
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Load available sheets (raw-material inventory) for the drawer.
+  // Load the sheets the drawer can cut from. Only in-stock rows: a sheet at
+  // zero has nothing left to cut, so offering it only invites a failed save.
   useEffect(() => {
     let alive = true;
     const rmOf = (res) => {
@@ -142,7 +174,8 @@ export default function Product() {
     };
     async function loadSheets() {
       try {
-        const first = await GetRawMaterials({ page: 1, limit: 100 });
+        const query = { status: "in_stock", limit: 100 };
+        const first = await GetRawMaterials({ ...query, page: 1 });
         const all = [...rmOf(first)];
         const pages = Math.min(
           first?.data?.meta?.pagination?.totalPages ?? 1,
@@ -151,7 +184,7 @@ export default function Product() {
         if (pages > 1) {
           const rest = await Promise.all(
             Array.from({ length: pages - 1 }, (_, i) =>
-              GetRawMaterials({ page: i + 2, limit: 100 })
+              GetRawMaterials({ ...query, page: i + 2 })
                 .then(rmOf)
                 .catch(() => []),
             ),
@@ -159,20 +192,7 @@ export default function Product() {
           rest.forEach((arr) => all.push(...arr));
         }
         if (alive) {
-          setSheets(
-            all
-              .map((s) => ({
-                id: s._id ?? s.id,
-                name:
-                  s.rawMaterialName ||
-                  [s.size, s.point, s.grade].filter(Boolean).join(" "),
-                size: s.size ?? "",
-                point: s.point ?? "",
-                grade: s.grade ?? "",
-                totalQtyGm: s.totalQty ?? 0,
-              }))
-              .filter((s) => s.id && s.name),
-          );
+          setSheets(all.map(toSheet).filter((s) => s.id && s.name));
         }
       } catch {
         if (alive) toast.error("Couldn't load sheets");
@@ -195,6 +215,12 @@ export default function Product() {
     try {
       const res = await getProductionById(id);
       const d = res?.data?.data ?? res?.data ?? {};
+      const own = sheetFromProduction(d);
+      if (own) {
+        setSheets((prev) =>
+          prev.some((s) => s.id === own.id) ? prev : [...prev, own],
+        );
+      }
       setForm(productionToForm(d));
       setMode("edit");
       setEditingId(id);

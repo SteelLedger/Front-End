@@ -3,11 +3,16 @@
 //
 // The API convention is the same everywhere — `fromDate` / `toDate` as
 // inclusive DD/MM/YYYY strings — while the UI works in ISO (yyyy-mm-dd),
-// which is what <input type="date"> speaks. Convert at the call site with
-// `isoToDMY` from ./party.
+// which is what <input type="date"> speaks. Convert with `isoToDMY`.
 
-/** Shown unfiltered — the option lists that open on "everything" lead with it. */
-export const ALL_DATES = { value: "all", label: "All Dates" };
+import { isoToDMY } from "./party";
+
+/**
+ * Every list opens on the current month. There is no "All Dates" preset: an
+ * unbounded list grows without limit and the first page of it says little, so
+ * the period is always a real range the user can widen from.
+ */
+export const DEFAULT_PERIOD = "this_month";
 
 export const PERIOD_OPTIONS = [
   { value: "today", label: "Today" },
@@ -19,9 +24,6 @@ export const PERIOD_OPTIONS = [
   { value: "this_year", label: "This Year" },
   { value: "custom", label: "Custom" },
 ];
-
-/** Presets for a list that opens with no date filter at all. */
-export const PERIOD_OPTIONS_WITH_ALL = [ALL_DATES, ...PERIOD_OPTIONS];
 
 function iso(d) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -43,11 +45,21 @@ const clampToToday = (isoDate) => {
 
 /**
  * From/to ISO dates for a period preset.
- * `all` clears the range; `custom` returns null so the user's own dates stand.
+ * `custom` returns null so the user's own dates stand.
  */
 export function rangeForPeriod(period) {
   const range = periodRange(period);
   return range ? { from: range.from, to: clampToToday(range.to) } : range;
+}
+
+/**
+ * The opening range as the API wants it — `{ fromDate, toDate }` in DD/MM/YYYY
+ * — so a list's first fetch is already scoped before the filter bar says a
+ * word. Every dated list seeds its own state with this.
+ */
+export function defaultDateRange() {
+  const r = rangeForPeriod(DEFAULT_PERIOD);
+  return { fromDate: isoToDMY(r.from), toDate: isoToDMY(r.to) };
 }
 
 function periodRange(period) {
@@ -57,8 +69,6 @@ function periodRange(period) {
   const day = now.getDate();
 
   switch (period) {
-    case "all":
-      return { from: "", to: "" };
     case "today":
       return { from: iso(now), to: iso(now) };
     case "yesterday": {

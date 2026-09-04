@@ -24,7 +24,6 @@ import SaleItemsModal from "../components/SaleItemsModal";
 import MenuPopover from "../components/MenuPopover";
 import FilterSelect from "../components/FilterSelect";
 import { usePageHeader } from "../context/pageHeader";
-import { isoToDMY } from "../utils/party";
 import { gmToKgDisplay } from "../utils/units";
 import {
   PAYMENT_TYPES,
@@ -37,7 +36,7 @@ import {
   saleToForm,
   extractSales,
 } from "../utils/sales";
-import { rangeForPeriod } from "../utils/dateRange";
+import { defaultDateRange } from "../utils/dateRange";
 import {
   GetSales,
   createSale,
@@ -54,11 +53,6 @@ const PAYMENT_FILTER_OPTIONS = [
   { value: "all", label: "All Payments" },
   ...PAYMENT_TYPES,
 ];
-/** Sales opens on the current month, so the first fetch already has a range. */
-function currentMonthRange() {
-  const r = rangeForPeriod("this_month");
-  return { fromDate: isoToDMY(r.from), toDate: isoToDMY(r.to) };
-}
 
 /* -------------------------------- pieces ---------------------------------- */
 
@@ -305,7 +299,7 @@ export default function Sales() {
   const [listError, setListError] = useState("");
 
   // { fromDate, toDate } as DD/MM/YYYY — the topbar filter owns the presets.
-  const [dateRange, setDateRange] = useState(currentMonthRange);
+  const [dateRange, setDateRange] = useState(defaultDateRange);
 
   usePageHeader({
     actionLabel: "Add Sale",

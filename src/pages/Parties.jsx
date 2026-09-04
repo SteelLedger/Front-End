@@ -28,6 +28,7 @@ import {
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import PartyFilter from "../components/PartyFilter";
 import { usePageHeader } from "../context/pageHeader";
+import { defaultDateRange } from "../utils/dateRange";
 import NotesModal from "../components/NotesModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import {
@@ -370,8 +371,8 @@ function Parties() {
   const [sortKey, setSortKey] = useState(null); // "name" | "amount"
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
-  // { fromDate, toDate } as DD/MM/YYYY over createdAt — empty until picked.
-  const [dateRange, setDateRange] = useState({});
+  // { fromDate, toDate } as DD/MM/YYYY over createdAt — opens on this month.
+  const [dateRange, setDateRange] = useState(defaultDateRange);
 
   // Date filter and "Add Party" both live in the topbar.
   usePageHeader({
@@ -766,7 +767,7 @@ function Parties() {
                 <div className="p-6 text-center text-sm text-slate-400">
                   {query || filterValues.length
                     ? "No parties match your search or filters."
-                    : "No parties yet. Add your first one."}
+                    : "No parties added in this period. Add your first one."}
                 </div>
               ) : (
                 parties.map((p) => {

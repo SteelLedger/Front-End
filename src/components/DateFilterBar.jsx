@@ -5,14 +5,15 @@ import DateRangeFilter from "./DateRangeFilter";
 import MenuPopover from "./MenuPopover";
 import { isoToDMY } from "../utils/party";
 import {
-  PERIOD_OPTIONS_WITH_ALL,
+  PERIOD_OPTIONS,
+  DEFAULT_PERIOD,
   rangeForPeriod,
   formatDateRange,
   todayISO,
 } from "../utils/dateRange";
 
 // "Custom" isn't pickable — it's what the chip reads once dates are hand-set.
-const PRESETS = PERIOD_OPTIONS_WITH_ALL.filter((o) => o.value !== "custom");
+const PRESETS = PERIOD_OPTIONS.filter((o) => o.value !== "custom");
 
 /**
  * DateFilterBar
@@ -26,7 +27,7 @@ const PRESETS = PERIOD_OPTIONS_WITH_ALL.filter((o) => o.value !== "custom");
  */
 export default function DateFilterBar({
   onChange,
-  defaultPeriod = "all",
+  defaultPeriod = DEFAULT_PERIOD,
   className = "",
   // Toolbars that sit the chips beside a search box drop both — the Period
   // select names itself, and each chip clears itself from its own menu.
@@ -68,21 +69,16 @@ export default function DateFilterBar({
     emit(nextFrom, nextTo);
   }
 
-  function clearDates() {
-    setFrom("");
-    setTo("");
-    setPeriod("all");
-    emit("", "");
-  }
-
-  const dirty = period !== defaultPeriod || !!from || !!to;
+  const dirty =
+    period !== defaultPeriod || from !== initial.from || to !== initial.to;
 
   const active = !!(from || to);
   const today = todayISO();
   const chipLabel =
     period === "custom"
       ? formatDateRange(from, to)
-      : (PRESETS.find((o) => o.value === period)?.label ?? "All Dates");
+      : (PRESETS.find((o) => o.value === period)?.label ??
+        formatDateRange(from, to));
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
@@ -176,16 +172,15 @@ export default function DateFilterBar({
           value={period}
           onChange={changePeriod}
           options={PRESETS}
-          displayLabel={
-            PERIOD_OPTIONS_WITH_ALL.find((o) => o.value === period)?.label
-          }
+          displayLabel={PERIOD_OPTIONS.find((o) => o.value === period)?.label}
           active={period !== defaultPeriod}
         />
         <DateRangeFilter
           from={from}
           to={to}
           onChange={changeDate}
-          onClear={clearDates}
+          onReset={() => changePeriod(defaultPeriod)}
+          canReset={dirty}
         />
       </div>
       {showReset && dirty && (

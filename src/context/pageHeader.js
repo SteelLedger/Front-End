@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef } from "react";
+import { DEFAULT_PERIOD } from "../utils/dateRange";
 
 /**
  * Lets the page currently in the <Outlet/> put its own controls in the topbar:
@@ -18,14 +19,15 @@ export const PageHeaderContext = createContext(() => {});
  * @param {string}   [config.actionLabel]   Button text; falls back to "New Sale".
  * @param {Function} [config.onAction]      Click handler for that button.
  * @param {boolean}  [config.dateFilter]    Show the period + range chips.
- * @param {string}   [config.defaultPeriod] Preset the filter opens on.
+ * @param {string}   [config.defaultPeriod] Preset the filter opens on;
+ *                                          defaults to the current month.
  * @param {Function} [config.onDateChange]  Receives { fromDate, toDate, from, to }.
  */
 export function usePageHeader({
   actionLabel,
   onAction,
   dateFilter = false,
-  defaultPeriod = "all",
+  defaultPeriod = DEFAULT_PERIOD,
   onDateChange,
 } = {}) {
   const setHeader = useContext(PageHeaderContext);
@@ -41,7 +43,9 @@ export function usePageHeader({
       actionLabel,
       dateFilter,
       defaultPeriod,
-      onAction: onAction ? (...args) => handlers.current.onAction?.(...args) : undefined,
+      onAction: onAction
+        ? (...args) => handlers.current.onAction?.(...args)
+        : undefined,
       onDateChange: (...args) => handlers.current.onDateChange?.(...args),
     });
     return () => setHeader({});

@@ -87,7 +87,7 @@ const PRODUCT_COLUMNS = [
     render: (r) => r.productSize,
   },
   {
-    label: "Raw Material",
+    label: "Raw Material Sheet",
     sortField: "rawMaterialName",
     render: (r) => r.rawMaterialName,
   },

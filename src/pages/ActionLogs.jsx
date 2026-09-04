@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import FilterSelect from "../components/FilterSelect";
 import { usePageHeader } from "../context/pageHeader";
+import { defaultDateRange } from "../utils/dateRange";
 import { getInitials } from "../utils/auth";
 import {
   ACTION_FILTER_OPTIONS,
@@ -91,8 +92,8 @@ export default function ActionLogs() {
   // Newest first: an audit trail is read from the top down.
   const [sortOrder, setSortOrder] = useState("desc");
   const [page, setPage] = useState(1);
-  // { fromDate, toDate } as DD/MM/YYYY — empty until a period is picked.
-  const [dateRange, setDateRange] = useState({});
+  // { fromDate, toDate } as DD/MM/YYYY — opens on the current month.
+  const [dateRange, setDateRange] = useState(defaultDateRange);
 
   usePageHeader({
     dateFilter: true,
@@ -340,7 +341,10 @@ export default function ActionLogs() {
                     {logs.map((log) => {
                       const when = formatLogTime(log.createdAt);
                       return (
-                        <tr key={log.id} className="align-top hover:bg-slate-50/70">
+                        <tr
+                          key={log.id}
+                          className="align-top hover:bg-slate-50/70"
+                        >
                           <td className="whitespace-nowrap px-4 py-3 text-slate-500">
                             {when.date}
                             <span className="ml-1.5 text-xs text-slate-400">
@@ -384,7 +388,9 @@ export default function ActionLogs() {
                     <button
                       type="button"
                       disabled={page >= totalPages}
-                      onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
+                      onClick={() =>
+                        setPage((n) => Math.min(totalPages, n + 1))
+                      }
                       aria-label="Next page"
                       className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     >

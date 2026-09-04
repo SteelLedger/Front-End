@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Calendar, ChevronDown, X } from "lucide-react";
+import { Calendar, ChevronDown, RotateCcw } from "lucide-react";
 import MenuPopover from "./MenuPopover";
 import { formatDateRange, todayISO } from "../utils/dateRange";
 
@@ -15,7 +15,13 @@ const DATE_INPUT =
  * the dd-mm-yyyy placeholders and duplicate browser calendar glyphs read as
  * clutter, and an empty range gave no hint that nothing was being filtered.
  */
-export default function DateRangeFilter({ from, to, onChange, onClear }) {
+export default function DateRangeFilter({
+  from,
+  to,
+  onChange,
+  onReset,
+  canReset,
+}) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
   const active = !!(from || to);
@@ -94,11 +100,11 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
             <button
               type="button"
-              onClick={onClear}
-              disabled={!active}
+              onClick={onReset}
+              disabled={!canReset}
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
             >
-              <X size={13} /> Clear
+              <RotateCcw size={13} /> Reset
             </button>
             <button
               type="button"

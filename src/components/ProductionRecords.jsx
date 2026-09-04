@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import ConfirmDialog from "./ConfirmDialog";
 import { usePageHeader } from "../context/pageHeader";
+import { defaultDateRange } from "../utils/dateRange";
 import {
   GetProductions,
   DeleteProduction,
@@ -133,8 +134,8 @@ export default function ProductionRecords({ onEdit, onAddProduct, reloadKey }) {
   const [sortBy, setSortBy] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
-  // { fromDate, toDate } as DD/MM/YYYY — empty until a period is picked.
-  const [dateRange, setDateRange] = useState({});
+  // { fromDate, toDate } as DD/MM/YYYY — opens on the current month.
+  const [dateRange, setDateRange] = useState(defaultDateRange);
 
   // The Product page owns the topbar action; this only adds the date filter.
   usePageHeader({
@@ -315,7 +316,7 @@ export default function ProductionRecords({ onEdit, onAddProduct, reloadKey }) {
             <p className="text-sm">
               {debounced
                 ? "No productions match your search."
-                : "No productions yet. Click Add Product to cut your first one."}
+                : "No productions in this period. Click Add Product to cut your first one."}
             </p>
           </div>
         ) : (
@@ -393,7 +394,9 @@ export default function ProductionRecords({ onEdit, onAddProduct, reloadKey }) {
                       field="productName"
                       {...sortProps}
                     />
-                    <th className="py-3 px-4 font-semibold">Raw Material</th>
+                    <th className="py-3 px-4 font-semibold">
+                      Raw Material Sheet
+                    </th>
                     <SortHeader
                       label="Size"
                       field="productSize"

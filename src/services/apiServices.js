@@ -228,8 +228,11 @@ export const DeletePurchase = (id) => {
 /* ------------------------------ Raw materials ------------------------------ */
 
 // Aggregated raw-material inventory (stock by size/point/grade).
+// `status` is in_stock|out_of_stock and accepts "all", which is sent as no
+// filter at all — same convention as /products and /by-products.
 export const GetRawMaterials = ({
   search,
+  status,
   sortBy,
   sortOrder,
   page,
@@ -237,6 +240,7 @@ export const GetRawMaterials = ({
 } = {}) => {
   const qs = new URLSearchParams();
   if (search) qs.append("search", search);
+  if (status && status !== "all") qs.append("status", status);
   if (sortBy) qs.append("sortBy", sortBy);
   if (sortOrder) qs.append("sortOrder", sortOrder);
   if (page) qs.append("page", page);
