@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
   X,
-  Plus,
   Check,
   Package,
   Boxes,
@@ -213,7 +212,6 @@ function LineSection({
             disabled={!canAdd}
             className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#1E4D96] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
           >
-            <Plus size={15} strokeWidth={2.5} />
             Add
           </button>
         </div>
@@ -607,11 +605,7 @@ export default function AddSaleDrawer({
               disabled={saving}
               className="inline-flex items-center gap-2 rounded-lg bg-[#1E4D96] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
             >
-              {mode === "add" ? (
-                <Plus size={16} strokeWidth={2.5} />
-              ) : (
-                <Check size={16} strokeWidth={2.5} />
-              )}
+              {mode !== "add" && <Check size={16} strokeWidth={2.5} />}
               {saving
                 ? mode === "add"
                   ? "Adding…"

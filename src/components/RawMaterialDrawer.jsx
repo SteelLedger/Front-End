@@ -6,11 +6,14 @@ import { gmToKgDisplay } from "../utils/units";
 import {
   emptyLineItem,
   isBlankLine,
-  isPartialLine,
+  missingFields,
+  notPositiveFields,
+  fieldLabels,
   filledLines,
   lineTotals,
   lineLabel,
 } from "../utils/purchase";
+import { joinWithAnd, sentenceCase } from "../utils/text";
 
 function Field({ label, required, info, children }) {
   return (
@@ -89,7 +92,12 @@ export default function RawMaterialDrawer({
     error: "",
     errorFields: [],
     errorLines: [],
+    errorCells: [],
   });
+
+  // One offending input, as "rowIndex:fieldName" — so a row with a bad size
+  // outlines the size box alone, not the four beside it that are fine.
+  const cellKey = (index, field) => `${index}:${field}`;
 
   // Update a bill-level field and clear any validation error.
   const update = (field, value) =>
@@ -146,6 +154,7 @@ export default function RawMaterialDrawer({
         ...f,
         errorFields: missing,
         errorLines: [],
+        errorCells: [],
         error: supplierUnmatched
           ? "Select a supplier from the list (or add a new one)."
           : "Please fill all required fields.",
@@ -154,17 +163,55 @@ export default function RawMaterialDrawer({
       return;
     }
 
-    // Half-filled rows are a mistake, not something to silently drop.
-    const partial = lines
-      .map((l, i) => (isPartialLine(l) ? i : -1))
-      .filter((i) => i >= 0);
-    if (partial.length) {
+    // Rows the user started. Trailing blanks are ignored, but anything typed
+    // into has to hold up — half-filled rows are a mistake, not a throwaway.
+    const touched = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => !isBlankLine(line));
+
+    /**
+     * Collect the bad fields across every touched row. `rows` and `cells` drive
+     * the highlighting; `fields` is the union that names them in the message,
+     * kept in editor order so it reads "size, quantity and bundles" whichever
+     * row each problem came from.
+     */
+    function collect(fieldsOf) {
+      const rows = [];
+      const cells = [];
+      const fields = [];
+      touched.forEach(({ line, index }) => {
+        const bad = fieldsOf(line);
+        if (!bad.length) return;
+        rows.push(index);
+        bad.forEach((field) => {
+          cells.push(cellKey(index, field));
+          if (!fields.includes(field)) fields.push(field);
+        });
+      });
+      return { rows, cells, fields };
+    }
+
+    const incomplete = collect(missingFields);
+    if (incomplete.rows.length) {
       setFormState((f) => ({
         ...f,
         errorFields: [],
-        errorLines: partial,
-        error:
-          "Every item needs a size, point, grade, quantity and bundle count.",
+        errorLines: incomplete.rows,
+        errorCells: incomplete.cells,
+        error: `Every item needs a ${joinWithAnd(fieldLabels(incomplete.fields))}.`,
+      }));
+      return;
+    }
+
+    // Filled in, but an amount reads as zero (or isn't a number at all).
+    const notPositive = collect(notPositiveFields);
+    if (notPositive.rows.length) {
+      setFormState((f) => ({
+        ...f,
+        errorFields: [],
+        errorLines: notPositive.rows,
+        errorCells: notPositive.cells,
+        error: `${sentenceCase(joinWithAnd(fieldLabels(notPositive.fields)))} must be greater than 0.`,
       }));
       return;
     }
@@ -174,6 +221,7 @@ export default function RawMaterialDrawer({
         ...f,
         errorFields: [],
         errorLines: [0],
+        errorCells: [],
         error: "Add at least one item to this bill.",
       }));
       return;
@@ -185,6 +233,7 @@ export default function RawMaterialDrawer({
 
   const errs = formState.errorFields || [];
   const errLines = formState.errorLines || [];
+  const errCells = formState.errorCells || [];
 
   const fieldClass = (name) =>
     `w-full rounded-md border px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
@@ -193,11 +242,17 @@ export default function RawMaterialDrawer({
         : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
     }`;
 
-  const lineClass = (index) =>
+  // Named cells win; the whole row only reds when no field was singled out
+  // (the "add at least one item" case, which is about the row, not a field).
+  const lineClass = (index, field) =>
     `${LINE_INPUT} ${
-      errLines.includes(index)
-        ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
-        : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+      errCells.length
+        ? errCells.includes(cellKey(index, field))
+          ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
+          : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+        : errLines.includes(index)
+          ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
+          : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
     }`;
 
   // Resolve the typed/selected supplier name to a real party id.
@@ -330,7 +385,7 @@ export default function RawMaterialDrawer({
                 onClick={addLine}
                 className="inline-flex items-center gap-1 rounded-md px-2.5 py-2 text-xs font-semibold text-[#1E4D96] transition-colors hover:bg-blue-50"
               >
-                <Plus size={14} strokeWidth={2.5} /> Add Item
+                Add Item
               </button>
             </div>
 
@@ -375,7 +430,7 @@ export default function RawMaterialDrawer({
                             updateLine(i, "size", alnum(e.target.value))
                           }
                           placeholder="10"
-                          className={lineClass(i)}
+                          className={lineClass(i, "size")}
                         />
                       </label>
                       <label className="block sm:contents">
@@ -388,7 +443,7 @@ export default function RawMaterialDrawer({
                             updateLine(i, "point", alnum(e.target.value))
                           }
                           placeholder="120p"
-                          className={lineClass(i)}
+                          className={lineClass(i, "point")}
                         />
                       </label>
                       <label className="block sm:contents">
@@ -401,7 +456,7 @@ export default function RawMaterialDrawer({
                             updateLine(i, "grade", alnum(e.target.value))
                           }
                           placeholder="M5"
-                          className={lineClass(i)}
+                          className={lineClass(i, "grade")}
                         />
                       </label>
                       <label className="block sm:contents">
@@ -417,7 +472,7 @@ export default function RawMaterialDrawer({
                             updateLine(i, "quantity", e.target.value)
                           }
                           placeholder="250"
-                          className={lineClass(i)}
+                          className={lineClass(i, "quantity")}
                         />
                       </label>
                       <label className="block sm:contents">
@@ -431,7 +486,7 @@ export default function RawMaterialDrawer({
                             updateLine(i, "bundles", digits(e.target.value))
                           }
                           placeholder="12"
-                          className={lineClass(i)}
+                          className={lineClass(i, "bundles")}
                         />
                       </label>
                       <div className="col-span-2 flex justify-end sm:col-span-1">
@@ -498,11 +553,7 @@ export default function RawMaterialDrawer({
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-md bg-[#1E4D96] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
           >
-            {mode === "add" ? (
-              <Plus size={16} strokeWidth={2.5} />
-            ) : (
-              <Check size={16} strokeWidth={2.5} />
-            )}
+            {mode !== "add" && <Check size={16} strokeWidth={2.5} />}
             {saving
               ? mode === "add"
                 ? "Adding…"

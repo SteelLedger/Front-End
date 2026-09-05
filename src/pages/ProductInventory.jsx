@@ -2,13 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Boxes, Package, PackageCheck, PackageX } from "lucide-react";
 import InventoryTab from "../components/InventoryTab";
-import ByproductsModal from "../components/ByproductsModal";
 import { gmToKgDisplay } from "../utils/units";
-import {
-  GetProducts,
-  GetByProducts,
-  GetProductions,
-} from "../services/apiServices";
+import { GetProducts, GetByProducts } from "../services/apiServices";
 
 function statusBadge(status) {
   return (
@@ -210,49 +205,6 @@ function TabBtn({ active, onClick, children }) {
 
 export default function ProductInventory() {
   const [tab, setTab] = useState("items");
-  // Byproducts viewer: { loading, productName, byProducts } | null
-  const [viewState, setViewState] = useState(null);
-
-  // A product-inventory row is aggregated by product name, so its byproducts
-  // come from that product's productions: fetch them and sum by byproduct name.
-  async function openView(row) {
-    setViewState({
-      loading: true,
-      productName: row.productName,
-      byProducts: [],
-    });
-    try {
-      // `productId` matches the inventory row exactly, and the list already
-      // carries each run's byProducts — this used to search by name and then
-      // fetch every production by id, one request apiece.
-      const listRes = await GetProductions({ productId: row.id, limit: 100 });
-      const d = listRes?.data?.data ?? {};
-      const runs = Array.isArray(d) ? d : (d.productions ?? []);
-
-      const totals = new Map();
-      runs.forEach((run) => {
-        (run.byProducts || []).forEach((bp) => {
-          const name = bp.byProductName || "—";
-          totals.set(name, (totals.get(name) || 0) + (Number(bp.qty) || 0));
-        });
-      });
-
-      setViewState({
-        loading: false,
-        productName: row.productName,
-        byProducts: [...totals.entries()].map(([byProductName, qty]) => ({
-          byProductName,
-          qty,
-        })),
-      });
-    } catch {
-      setViewState({
-        loading: false,
-        productName: row.productName,
-        byProducts: [],
-      });
-    }
-  }
 
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
@@ -278,7 +230,6 @@ export default function ProductInventory() {
             columns={PRODUCT_COLUMNS}
             statCards={productStats}
             searchPlaceholder="Search product, size, raw material"
-            onView={openView}
           />
         ) : (
           <InventoryTab
@@ -291,8 +242,6 @@ export default function ProductInventory() {
           />
         )}
       </div>
-
-      <ByproductsModal state={viewState} onClose={() => setViewState(null)} />
     </div>
   );
 }

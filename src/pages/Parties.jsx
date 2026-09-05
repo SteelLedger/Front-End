@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import PartyFilter from "../components/PartyFilter";
+import DateFilterBar from "../components/DateFilterBar";
+import BulkImportModal from "../components/BulkImportModal";
 import { usePageHeader } from "../context/pageHeader";
 import { defaultDateRange } from "../utils/dateRange";
 import NotesModal from "../components/NotesModal";
@@ -44,8 +46,7 @@ import {
   createParty,
   updateParty,
   DeleteParty,
-  GetTransactionWithParty,
-  GetTransactionWithPartyAndPurchase,
+  GetTransactions,
 } from "../services/apiServices";
 
 const PAGE_SIZE = 10;
@@ -371,18 +372,15 @@ function Parties() {
   const [sortKey, setSortKey] = useState(null); // "name" | "amount"
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
-  // { fromDate, toDate } as DD/MM/YYYY over createdAt — opens on this month.
-  const [dateRange, setDateRange] = useState(defaultDateRange);
+  const [importOpen, setImportOpen] = useState(false);
 
-  // Date filter and "Add Party" both live in the topbar.
+  // Only the two add actions go to the topbar; the date filter belongs to the
+  // transactions panel below, which scopes one party's ledger — not the roster.
   usePageHeader({
     actionLabel: "Add Party",
     onAction: () => openAddModal(),
-    dateFilter: true,
-    onDateChange: (range) => {
-      setDateRange(range);
-      setPage(1);
-    },
+    secondaryLabel: "Bulk Import",
+    onSecondary: () => setImportOpen(true),
   });
 
   const [selectedId, setSelectedId] = useState(null);
@@ -411,6 +409,8 @@ function Parties() {
   const [txnFilter, setTxnFilter] = useState("All");
   const [txnSearchOpen, setTxnSearchOpen] = useState(false);
   const [txnSearch, setTxnSearch] = useState("");
+  // { fromDate, toDate } as DD/MM/YYYY — opens on the current month.
+  const [txnRange, setTxnRange] = useState(defaultDateRange);
 
   const detailRef = useRef(null);
 
@@ -433,8 +433,6 @@ function Parties() {
       const res = await GetParties({
         search: debouncedQuery,
         filter: filterValues,
-        fromDate: dateRange.fromDate,
-        toDate: dateRange.toDate,
         sortBy: sortKey ? SORT_FIELD[sortKey] : undefined,
         sortOrder: sortKey ? sortDir : undefined,
         page,
@@ -458,7 +456,7 @@ function Parties() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, filterValues, dateRange, sortKey, sortDir, page]);
+  }, [debouncedQuery, filterValues, sortKey, sortDir, page]);
 
   useEffect(() => {
     // Legitimate data-fetch on mount / when query params change.
@@ -476,15 +474,14 @@ function Parties() {
     setTxnLoading(true);
     setTxnError("");
     try {
-      const types = TXN_FILTER_TYPES[txnFilter] || [];
-      const res = types.length
-        ? await GetTransactionWithPartyAndPurchase(
-            selectedId,
-            types[0],
-            txnPage,
-            TXN_PAGE_SIZE,
-          )
-        : await GetTransactionWithParty(selectedId, txnPage, TXN_PAGE_SIZE);
+      const res = await GetTransactions({
+        partyId: selectedId,
+        type: TXN_FILTER_TYPES[txnFilter],
+        fromDate: txnRange.fromDate,
+        toDate: txnRange.toDate,
+        page: txnPage,
+        limit: TXN_PAGE_SIZE,
+      });
       const { list, total: t } = extractTxns(res);
       setTxns(list.map(normalizeTxn));
       setTxnTotal(t);
@@ -496,7 +493,7 @@ function Parties() {
     } finally {
       setTxnLoading(false);
     }
-  }, [selectedId, txnFilter, txnPage]);
+  }, [selectedId, txnFilter, txnRange, txnPage]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -767,7 +764,7 @@ function Parties() {
                 <div className="p-6 text-center text-sm text-slate-400">
                   {query || filterValues.length
                     ? "No parties match your search or filters."
-                    : "No parties added in this period. Add your first one."}
+                    : "No parties yet. Add your first one."}
                 </div>
               ) : (
                 parties.map((p) => {
@@ -937,11 +934,19 @@ function Parties() {
                 </div>
 
                 <div className="flex-1 flex flex-col p-4 sm:p-5">
-                  <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <h3 className="text-base font-semibold text-slate-900">
                       Transactions
                     </h3>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <DateFilterBar
+                        showLabel={false}
+                        showReset={false}
+                        onChange={(range) => {
+                          setTxnRange(range);
+                          setTxnPage(1);
+                        }}
+                      />
                       {txnSearchOpen && (
                         <input
                           autoFocus
@@ -1179,6 +1184,18 @@ function Parties() {
           </div>
         </div>
       </div>
+
+      {importOpen && (
+        <BulkImportModal
+          onClose={() => {
+            setImportOpen(false);
+            // The job runs off a queue, so rows rarely land before this — but
+            // a small file can finish quickly, and refetching costs one call.
+            fetchParties();
+          }}
+          onQueued={fetchParties}
+        />
+      )}
 
       <AddPartyDrawer
         open={modalOpen}

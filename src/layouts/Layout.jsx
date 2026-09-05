@@ -443,16 +443,23 @@ export default function Layout() {
                 onChange={header.onDateChange}
               />
             )}
+            {header.onSecondary && header.secondaryLabel && (
+              <button
+                onClick={header.onSecondary}
+                aria-label={header.secondaryLabel}
+                title={header.secondaryLabel}
+                className="flex h-10 items-center whitespace-nowrap rounded-lg border border-[#1E4D96] bg-white px-3 text-[14px] font-semibold text-[#1E4D96] transition-colors hover:bg-[#EEF3FB]"
+              >
+                {header.secondaryLabel}
+              </button>
+            )}
             <button
               onClick={header.onAction ?? (() => handleNav("/sales"))}
               aria-label={header.actionLabel ?? "New Sale"}
               title={header.actionLabel ?? "New Sale"}
               className="flex h-10 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#1E4D96] px-3 text-[14px] font-semibold text-white transition-colors hover:bg-[#1A3F7A]"
             >
-              <PlusIcon />
-              <span className="hidden sm:inline">
-                {header.actionLabel ?? "New Sale"}
-              </span>
+              <span>{header.actionLabel ?? "New Sale"}</span>
             </button>
           </div>
         </header>
@@ -690,20 +697,6 @@ function MenuIcon() {
       height="18"
     >
       <path d="M3 5h14M3 10h14M3 15h14" />
-    </svg>
-  );
-}
-function PlusIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      width="14"
-      height="14"
-    >
-      <path d="M10 4v12M4 10h12" />
     </svg>
   );
 }

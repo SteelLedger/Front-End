@@ -27,7 +27,7 @@ export const ROLE_FILTER_OPTIONS = [
 ];
 
 export const STATUS_FILTER_OPTIONS = [
-  { value: "all", label: "All statuses" },
+  { value: "all", label: "All status" },
   { value: "pending", label: "Pending" },
   { value: "accepted", label: "Accepted" },
 ];
@@ -37,7 +37,11 @@ export function roleLabel(value) {
 }
 
 export function statusLabel(value) {
-  return value === "accepted" ? "Accepted" : value === "pending" ? "Pending" : "—";
+  return value === "accepted"
+    ? "Accepted"
+    : value === "pending"
+      ? "Pending"
+      : "—";
 }
 
 // Fields GET /users will sort on — anything else has to stay unsorted.
@@ -73,7 +77,8 @@ export function normalizeMember(raw) {
 export function extractMembers(res) {
   const body = res?.data ?? {};
   const list = Array.isArray(body.data) ? body.data : (body.data?.users ?? []);
-  const total = body.meta?.pagination?.total ?? (Array.isArray(list) ? list.length : 0);
+  const total =
+    body.meta?.pagination?.total ?? (Array.isArray(list) ? list.length : 0);
   return {
     list: Array.isArray(list) ? list : [],
     total: Number(total) || 0,

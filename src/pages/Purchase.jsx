@@ -537,15 +537,16 @@ export default function Purchase() {
                       <th className="py-3 px-4 font-semibold">
                         Raw Material Sheet
                       </th>
+
                       <SortHeader
-                        label="Bundles"
-                        field="totalBundles"
+                        label="Qty"
+                        field="totalQuantity"
                         align="right"
                         {...sortProps}
                       />
                       <SortHeader
-                        label="Qty"
-                        field="totalQuantity"
+                        label="Bundles"
+                        field="totalBundles"
                         align="right"
                         {...sortProps}
                       />
@@ -576,11 +577,12 @@ export default function Purchase() {
                             onOpen={() => setOpenBill(p)}
                           />
                         </td>
-                        <td className="py-3 px-4 text-right font-medium text-slate-700">
-                          {p.totalBundles || 0}
-                        </td>
+
                         <td className="py-3 px-4 text-right font-medium text-slate-800 whitespace-nowrap">
                           {gmToKgDisplay(p.totalQuantity || 0)} kg
+                        </td>
+                        <td className="py-3 px-4 text-right font-medium text-slate-700">
+                          {p.totalBundles || 0}
                         </td>
                         <td
                           className="py-3 px-4"

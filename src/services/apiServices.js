@@ -1,4 +1,4 @@
-import { POST, GET, PUT, DELETE } from "./axiosInstance";
+import { POST, GET, PUT, DELETE, UPLOAD } from "./axiosInstance";
 
 export const login = (data) => {
   return POST(`/auth/login`, data);
@@ -169,21 +169,45 @@ export const DeleteParty = (deleteId) => {
   return DELETE(`/parties/${deleteId}`);
 };
 
-/* ------------------------------- Transactions ------------------------------ */
-
-export const GetTransactionWithParty = (partyId, page = 1, limit = 10) => {
-  return GET(`/transactions?partyId=${partyId}&page=${page}&limit=${limit}`);
+/**
+ * Bulk-import parties from a CSV. Takes the raw File and answers 202 — the
+ * rows are processed asynchronously off a queue, and the backend emails the
+ * caller a summary when it finishes, so the response describes a *job*
+ * (status, totalRows, recipientEmail), not the parties themselves.
+ * Rows duplicating an existing name + partyType are skipped; 5000 rows max.
+ */
+export const importParties = (file) => {
+  const body = new FormData();
+  body.append("file", file);
+  return UPLOAD(`/parties/import`, body);
 };
 
-export const GetTransactionWithPartyAndPurchase = (
+/* ------------------------------- Transactions ------------------------------ */
+
+/**
+ * A party's ledger — sales, purchases and opening balances. `type` takes one
+ * value or several, repeated in the query string (?type=sale&type=purchase)
+ * and snake_case as the backend spells them; omit it for every type.
+ * `fromDate` / `toDate` are the usual inclusive DD/MM/YYYY pair.
+ */
+export const GetTransactions = ({
   partyId,
   type,
-  page = 1,
-  limit = 10,
-) => {
-  return GET(
-    `/transactions?partyId=${partyId}&type=${type}&page=${page}&limit=${limit}`,
-  );
+  fromDate,
+  toDate,
+  page,
+  limit,
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (partyId) qs.append("partyId", partyId);
+  const types = Array.isArray(type) ? type : type ? [type] : [];
+  types.forEach((t) => t && t !== "all" && qs.append("type", t));
+  if (fromDate) qs.append("fromDate", fromDate);
+  if (toDate) qs.append("toDate", toDate);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/transactions${q ? `?${q}` : ""}`);
 };
 
 /* -------------------------------- Purchases -------------------------------- */

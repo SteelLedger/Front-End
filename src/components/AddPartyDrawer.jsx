@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { X, Settings, Plus, Trash2 } from "lucide-react";
+import { X, Settings, Trash2 } from "lucide-react";
 import {
   GetAllCountryList,
   GetAllStateListByCountryId,
@@ -277,7 +277,7 @@ export default function AddPartyDrawer({
           onClick={() => addAddress(kind)}
           className="-ml-2 mt-1.5 flex items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-[#1E4D96] hover:underline"
         >
-          <Plus size={13} /> {addLabel}
+          {addLabel}
         </button>
       </>
     );
@@ -651,7 +651,7 @@ export default function AddPartyDrawer({
                 onClick={addNote}
                 className="flex items-center gap-1 text-xs font-semibold text-[#1E4D96] hover:underline"
               >
-                <Plus size={13} /> Add Another Note
+                Add Another Note
               </button>
             </div>
           )}

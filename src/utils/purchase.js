@@ -34,10 +34,14 @@ export function emptyPurchaseForm() {
     error: "",
     errorFields: [],
     errorLines: [],
+    errorCells: [],
   };
 }
 
 const text = (v) => String(v ?? "").trim();
+
+/** Filled in AND a number above zero — how every amount on a line must read. */
+const positive = (v) => text(v) !== "" && Number(v) > 0;
 
 /** Nothing typed in any of the five fields — a leftover blank row. */
 export const isBlankLine = (l) =>
@@ -47,16 +51,42 @@ export const isBlankLine = (l) =>
   !text(l.quantity) &&
   !text(l.bundles);
 
-/** Every field the API requires on a line is present and positive. */
-export const isCompleteLine = (l) =>
-  !!text(l.size) &&
-  !!text(l.point) &&
-  !!text(l.grade) &&
-  Number(l.quantity) > 0 &&
-  Number(l.bundles) > 0;
+/** The five fields of a line, in the order the items editor shows them. */
+export const LINE_FIELDS = ["size", "point", "grade", "quantity", "bundles"];
 
-/** Started but not finished — the drawer flags these instead of dropping them. */
-export const isPartialLine = (l) => !isBlankLine(l) && !isCompleteLine(l);
+/**
+ * Size, quantity and bundles are amounts: a 0, a negative or a stray letter is
+ * not a line the backend can store. Point and grade are labels ("120p", "M5"),
+ * so they only have to be present.
+ */
+export const AMOUNT_FIELDS = ["size", "quantity", "bundles"];
+
+/** How each field is named inside a validation message. */
+const FIELD_LABELS = {
+  size: "size",
+  point: "point",
+  grade: "grade",
+  quantity: "quantity",
+  bundles: "bundles",
+};
+
+export const fieldLabels = (fields = []) =>
+  fields.map((f) => FIELD_LABELS[f] ?? f);
+
+/** Which of the five fields this line has left empty, in editor order. */
+export const missingFields = (l) => LINE_FIELDS.filter((f) => !text(l[f]));
+
+/** Which amounts read as zero, negative or non-numeric, in editor order. */
+export const notPositiveFields = (l) =>
+  AMOUNT_FIELDS.filter((f) => !positive(l[f]));
+
+/** Something typed in all five fields, whatever those values say. */
+export const isFilledLine = (l) => !missingFields(l).length;
+
+export const hasPositiveAmounts = (l) => !notPositiveFields(l).length;
+
+/** Every field the API requires on a line is present and positive. */
+export const isCompleteLine = (l) => isFilledLine(l) && hasPositiveAmounts(l);
 
 /** Rows the user actually touched; trailing blanks are ignored on save. */
 export const filledLines = (lines = []) => lines.filter((l) => !isBlankLine(l));
@@ -150,6 +180,7 @@ export function purchaseToForm(p) {
     error: "",
     errorFields: [],
     errorLines: [],
+    errorCells: [],
   };
 }
 

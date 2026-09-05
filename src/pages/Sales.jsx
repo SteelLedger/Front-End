@@ -747,14 +747,15 @@ export default function Sales() {
                       />
                       <Th label="Party Name" />
                       <Th label="Items" />
+
+                      {/* Not sortable: a multi-item sale has no single quantity,
+                          and the API dropped `quantity` from its sortBy enum. */}
+                      <Th label="Quantity" align="right" />
                       <Th
                         label="Payment Type"
                         field="paymentType"
                         {...sortProps}
                       />
-                      {/* Not sortable: a multi-item sale has no single quantity,
-                          and the API dropped `quantity` from its sortBy enum. */}
-                      <Th label="Quantity" align="right" />
                       <th className="w-28 px-3 py-3 text-right font-semibold">
                         Actions
                       </th>
@@ -782,12 +783,13 @@ export default function Sales() {
                         <td className="max-w-[20rem] px-3 py-3">
                           <SaleLines sale={s} onOpen={() => setOpenSale(s)} />
                         </td>
-                        <td className="px-3 py-3 text-slate-600">
-                          {paymentTypeLabel(s.paymentType)}
-                        </td>
                         <td className="whitespace-nowrap px-3 py-3 text-right font-medium text-slate-800">
                           {gmToKgDisplay(s.totalQuantity)} kg
                         </td>
+                        <td className="px-3 py-3 text-slate-600">
+                          {paymentTypeLabel(s.paymentType)}
+                        </td>
+
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-0.5">
                             <button

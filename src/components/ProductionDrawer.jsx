@@ -1,8 +1,12 @@
 import { useEffect, useRef } from "react";
-import { X, Plus, Trash2, Check } from "lucide-react";
+import { X, Trash2, Check } from "lucide-react";
 import InfoTip from "./InfoTip";
-import { gmToKg, gmToKgDisplay } from "../utils/units";
+import { joinWithAnd, sentenceCase } from "../utils/text";
+import { gmToKg } from "../utils/units";
 import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
+
+/** A computed kg figure, trimmed the same way gmToKgDisplay trims. */
+const kgDisplay = (kg) => Number(kg.toFixed(3)).toLocaleString("en-IN");
 
 const FIELD =
   "w-full rounded-md border px-3 py-2.5 text-sm text-slate-700 " +
@@ -37,6 +41,8 @@ export default function ProductionDrawer({
   formState,
   setFormState,
   sheets = [],
+  // { sheetId, gm } on an edit: what this run already took out of that sheet.
+  sheetCredit = null,
   saving,
   onClose,
   onSubmit,
@@ -87,6 +93,16 @@ export default function ProductionDrawer({
     sheets.find((s) => s.id === formState.rawMaterialId) || null;
   const sheetKg = selectedSheet ? gmToKg(selectedSheet.totalQtyGm) : 0;
 
+  // On an edit the sheet's stock already has this run deducted, so re-saving
+  // it unchanged would read as overdrawing the sheet. Add its own consumption
+  // back to get what this run actually has to work with — but only while it is
+  // still cutting the sheet it was saved against.
+  const creditKg =
+    sheetCredit && selectedSheet?.id === sheetCredit.sheetId
+      ? gmToKg(sheetCredit.gm)
+      : 0;
+  const availableKg = sheetKg + creditKg;
+
   const maxSize =
     selectedSheet &&
     selectedSheet.size !== "" &&
@@ -110,21 +126,43 @@ export default function ProductionDrawer({
     sumByproductKg +
     (Number(formState.balancePattaQty) || 0) +
     (Number(formState.wasteQty) || 0);
-  const remainingKg = sheetKg - usedKg;
+  const remainingKg = availableKg - usedKg;
 
   // A run can produce a product, byproducts, or both. Mirrors the API:
   // productSize and productQty are optional but go together, and when neither
   // is given at least one byproduct is required.
+  //
+  // "Entered" here means typed into at all — a 0 counts as entered, so the
+  // pairing rules and the greater-than-zero rules stay separate complaints
+  // rather than a blank field and a 0 both reading as "missing".
   const sizeEntered = String(formState.productSize).trim() !== "";
-  const qtyEntered = Number(formState.howMany) > 0;
-  // Size and quantity go together; bundles is optional on its own.
-  const hasProduct = sizeEntered && qtyEntered;
+  const qtyEntered = String(formState.howMany).trim() !== "";
   const productHalfDone = sizeEntered !== qtyEntered;
 
   // Balance patta size and quantity likewise go together.
   const balanceSizeEntered = String(formState.balancePattaSize).trim() !== "";
-  const balanceQtyEntered = Number(formState.balancePattaQty) > 0;
+  const balanceQtyEntered = String(formState.balancePattaQty).trim() !== "";
   const balanceHalfDone = balanceSizeEntered !== balanceQtyEntered;
+
+  // Sizes and weights are amounts: filled in, they have to be above zero.
+  const notPositive = (v) => String(v).trim() !== "" && !(Number(v) > 0);
+  const sizeNotPositive = notPositive(formState.productSize);
+  const qtyNotPositive = notPositive(formState.howMany);
+  const balanceSizeNotPositive = notPositive(formState.balancePattaSize);
+  const balanceQtyNotPositive = notPositive(formState.balancePattaQty);
+  // Named in the order the fields appear, so the banner calls out only what
+  // the user actually got wrong rather than reciting all four.
+  const notPositiveNames = [
+    sizeNotPositive && "product size",
+    qtyNotPositive && "product quantity",
+    balanceSizeNotPositive && "balance patta size",
+    balanceQtyNotPositive && "balance patta quantity",
+  ].filter(Boolean);
+  const amountsNotPositive = notPositiveNames.length > 0;
+
+  // Size and quantity go together; bundles is optional on its own.
+  const hasProduct =
+    sizeEntered && qtyEntered && !sizeNotPositive && !qtyNotPositive;
 
   // The backend names the balance-patta row from this size plus the source
   // sheet's point and grade — show it so a typo is visible before saving.
@@ -144,6 +182,7 @@ export default function ProductionDrawer({
     !!formState.rawMaterialId &&
     !!formState.productionDate &&
     !sizeInvalid &&
+    !amountsNotPositive &&
     !productHalfDone &&
     !balanceHalfDone &&
     (hasProduct || hasByproduct);
@@ -151,13 +190,20 @@ export default function ProductionDrawer({
   // Why the submit button is off — a silently disabled button is a dead end.
   const blockedReason = !formState.rawMaterialId
     ? "Select a sheet to cut from."
-    : productHalfDone
-      ? "Product size and quantity go together — fill both, or clear both to record byproducts only."
-      : balanceHalfDone
-        ? "Balance patta needs both a size and a quantity."
-        : !hasProduct && !hasByproduct
-          ? "Add a product, or at least one byproduct."
-          : "";
+    : amountsNotPositive
+      ? `${sentenceCase(joinWithAnd(notPositiveNames))} must be greater than 0.`
+      : productHalfDone
+        ? "Product size and quantity go together — fill both, or clear both to record byproducts only."
+        : balanceHalfDone
+          ? "Balance patta needs both a size and a quantity."
+          : !hasProduct && !hasByproduct
+            ? "Add a product, or at least one byproduct."
+            : "";
+
+  // Shown in the footer, but only once a typed value is actually wrong — an
+  // untouched form shouldn't open scolding the user for the fields it needs.
+  const showBlockedReason =
+    amountsNotPositive || sizeInvalid || productHalfDone || balanceHalfDone;
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -233,9 +279,15 @@ export default function ProductionDrawer({
                   Sheet Weight:
                 </span>
                 <span className="font-semibold text-slate-800">
-                  {gmToKgDisplay(selectedSheet.totalQtyGm)} kg
+                  {kgDisplay(availableKg)} kg
                 </span>
-                <InfoTip text="This value is in kg." />
+                <InfoTip
+                  text={
+                    creditKg > 0
+                      ? `In kg. Includes the ${kgDisplay(creditKg)} kg this run currently uses, which is freed up when you save it again.`
+                      : "This value is in kg."
+                  }
+                />
               </div>
             )}
           </div>
@@ -251,13 +303,19 @@ export default function ProductionDrawer({
                 onChange={(e) => set({ productSize: e.target.value })}
                 placeholder={maxSize != null ? `Max ${maxSize}` : "e.g. 101"}
                 className={`${FIELD} ${
-                  sizeInvalid || (productHalfDone && !sizeEntered)
+                  sizeInvalid ||
+                  sizeNotPositive ||
+                  (productHalfDone && !sizeEntered)
                     ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
                     : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
                 }`}
               />
             </Field>
-            {sizeInvalid ? (
+            {sizeNotPositive ? (
+              <p className="mt-1 text-xs text-rose-600">
+                Product size must be greater than 0.
+              </p>
+            ) : sizeInvalid ? (
               <p className="mt-1 text-xs text-rose-600">
                 Product size can be at most {maxSize} for this sheet.
               </p>
@@ -282,7 +340,7 @@ export default function ProductionDrawer({
                 onChange={(e) => set({ howMany: e.target.value })}
                 placeholder="kg"
                 className={`${FIELD} ${
-                  productHalfDone && !qtyEntered
+                  qtyNotPositive || (productHalfDone && !qtyEntered)
                     ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
                     : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
                 }`}
@@ -352,7 +410,8 @@ export default function ProductionDrawer({
                   }
                   placeholder="e.g. 8"
                   className={`${FIELD} ${
-                    balanceHalfDone && !balanceSizeEntered
+                    balanceSizeNotPositive ||
+                    (balanceHalfDone && !balanceSizeEntered)
                       ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
                       : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
                   }`}
@@ -367,13 +426,25 @@ export default function ProductionDrawer({
                   onChange={(e) => set({ balancePattaQty: e.target.value })}
                   placeholder="kg"
                   className={`${FIELD} ${
-                    balanceHalfDone && !balanceQtyEntered
+                    balanceQtyNotPositive ||
+                    (balanceHalfDone && !balanceQtyEntered)
                       ? "border-rose-400 focus:border-rose-500 focus:ring-rose-300"
                       : "border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
                   }`}
                 />
               </Field>
             </div>
+            {(balanceSizeNotPositive || balanceQtyNotPositive) && (
+              <p className="mt-1.5 text-xs text-rose-600">
+                {sentenceCase(
+                  joinWithAnd([
+                    balanceSizeNotPositive && "size",
+                    balanceQtyNotPositive && "quantity",
+                  ]),
+                )}{" "}
+                must be greater than 0.
+              </p>
+            )}
             {balancePattaName && (
               <p className="mt-1.5 text-xs text-slate-400">
                 Goes to raw material:{" "}
@@ -452,13 +523,18 @@ export default function ProductionDrawer({
               onClick={addByproduct}
               className="-ml-2 mt-1.5 inline-flex items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-[#1E4D96] hover:underline"
             >
-              <Plus size={13} strokeWidth={2.5} /> Add Another Byproduct
+              Add Another Byproduct
             </button>
           </div>
         </form>
 
         {/* Footer */}
         <div className="border-t border-slate-200">
+          {showBlockedReason && blockedReason && (
+            <p className="mx-6 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600">
+              {blockedReason}
+            </p>
+          )}
           {/* Sits here rather than mid-form so it stays visible while the
               fields above it scroll — it's the number you check before saving. */}
           {selectedSheet && (
@@ -471,7 +547,7 @@ export default function ProductionDrawer({
                   remainingKg < 0 ? "text-rose-600" : "text-emerald-600"
                 }`}
               >
-                {Number(remainingKg.toFixed(3)).toLocaleString("en-IN")} kg
+                {kgDisplay(remainingKg)} kg
               </span>
             </div>
           )}
@@ -490,11 +566,7 @@ export default function ProductionDrawer({
               title={blockedReason || undefined}
               className="inline-flex items-center gap-2 rounded-md bg-[#1E4D96] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
             >
-              {mode === "add" ? (
-                <Plus size={16} strokeWidth={2.5} />
-              ) : (
-                <Check size={16} strokeWidth={2.5} />
-              )}
+              {mode !== "add" && <Check size={16} strokeWidth={2.5} />}
               {saving
                 ? mode === "add"
                   ? "Adding…"
