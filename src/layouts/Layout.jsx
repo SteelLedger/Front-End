@@ -4,6 +4,8 @@ import { clearSession, getDisplayUser, isAdmin } from "../utils/auth";
 import { PageHeaderContext } from "../context/pageHeader";
 import DateFilterBar from "../components/DateFilterBar";
 import ChangePasswordModal from "../components/ChangePasswordModal";
+import { GetSales } from "../services/apiServices";
+import { extractSales } from "../utils/sales";
 
 // ── Nav ───────────────────────────────────────────────────────────
 const NAV_SECTIONS = [
@@ -27,7 +29,14 @@ const NAV_SECTIONS = [
           { label: "Product", path: "/product-inventory" },
         ],
       },
-      { label: "Sales", icon: ReceiptIcon, badge: 3, path: "/sales" },
+      // The badge counts recorded sales — see `salesCount` below. Admin-only,
+      // so a member sees the item without the number.
+      {
+        label: "Sales",
+        icon: ReceiptIcon,
+        path: "/sales",
+        badge: "sales",
+      },
     ],
   },
   {
@@ -118,15 +127,46 @@ export default function Layout() {
   // Logged-in user — merged from the stored user object and the JWT claims.
   const user = useMemo(() => getDisplayUser(), []);
 
+  const admin = useMemo(() => isAdmin(), []);
+
   // Nav minus whatever this role can't reach. Dropping a section that empties
   // out keeps its heading from hanging over nothing.
-  const navSections = useMemo(() => {
-    const admin = isAdmin();
-    return NAV_SECTIONS.map((s) => ({
-      ...s,
-      items: s.items.filter((it) => !it.adminOnly || admin),
-    })).filter((s) => s.items.length > 0);
-  }, []);
+  const navSections = useMemo(
+    () =>
+      NAV_SECTIONS.map((s) => ({
+        ...s,
+        items: s.items.filter((it) => !it.adminOnly || admin),
+      })).filter((s) => s.items.length > 0),
+    [admin],
+  );
+
+  /**
+   * How many sales are on record, for the Sales badge. Only the count is
+   * wanted, so this asks for a single row and reads the total off the
+   * pagination meta rather than pulling a page of invoices.
+   *
+   * Admin-only: a member never sees the number, so never fetches it. Refreshed
+   * on navigation — recording a sale changes it, and a nav badge that only
+   * updated on a full page load would sit there wrong.
+   */
+  const [salesCount, setSalesCount] = useState(0);
+  useEffect(() => {
+    if (!admin) return;
+    let alive = true;
+    GetSales({ limit: 1 })
+      .then((res) => {
+        if (alive) setSalesCount(extractSales(res).total);
+      })
+      .catch(() => {
+        // A nav badge is not worth a toast; leaving the last known count is
+        // friendlier than blanking the sidebar over a failed background call.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [admin, location.pathname]);
+
+  const badgeCounts = { sales: salesCount };
 
   const userName = user.name;
   // Show the role under the name; fall back to the email if no role.
@@ -332,9 +372,14 @@ export default function Layout() {
                         {label}
                       </span>
                     )}
-                    {!collapsed && badge && (
-                      <span className="bg-red-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                        {badge}
+                    {!collapsed && badgeCounts[badge] > 0 && (
+                      <span
+                        title={`${badgeCounts[badge]} ${
+                          badgeCounts[badge] === 1 ? "sale" : "sales"
+                        }`}
+                        className="bg-red-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                      >
+                        {badgeCounts[badge]}
                       </span>
                     )}
                   </button>

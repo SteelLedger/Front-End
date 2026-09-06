@@ -420,6 +420,26 @@ export const GetDashboardOutOfStock = () => {
   return GET(`/dashboard/out-of-stock`);
 };
 
+/* --------------------------------- Reports --------------------------------- */
+
+/**
+ * Queue a CSV report. Admin-only, and asynchronous: the answer is 202 with a
+ * job, and the finished CSV is emailed to the requesting admin — there is no
+ * file to download here and no endpoint listing past requests.
+ *
+ * `reportType` is one of purchase_history | production_history | sales_history
+ * | raw_material_inventory | product_inventory. The three history types
+ * require `fromDate`/`toDate` (DD/MM/YYYY, within the last 2 years and
+ * spanning at most 2 years); the two inventory types are a snapshot of stock
+ * right now and must be sent WITHOUT dates.
+ */
+export const requestReport = ({ reportType, fromDate, toDate } = {}) => {
+  return POST(`/reports/request`, {
+    reportType,
+    ...(fromDate && toDate ? { fromDate, toDate } : {}),
+  });
+};
+
 /* -------------------------- Product / by-product inv ----------------------- */
 
 // Product inventory (grouped by product name).

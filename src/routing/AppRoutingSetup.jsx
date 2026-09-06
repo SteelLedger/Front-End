@@ -19,7 +19,7 @@ import ProductProductions from "../pages/ProductProductions";
 import Members from "../pages/Members";
 import ActionLogs from "../pages/ActionLogs";
 import Settings from "../pages/Settings";
-import ComingSoon from "../pages/ComingSoon";
+import Reports from "../pages/Reports";
 import AdminOnly from "../components/AdminOnly";
 import NotFound from "../pages/NotFound";
 
@@ -93,7 +93,6 @@ const router = createBrowserRouter([
             path: "/sales",
             element: <Sales />,
           },
-          // Modules not built yet — placeholders so QA doesn't hit blank screens.
           {
             path: "/reports",
             element: (
@@ -101,7 +100,7 @@ const router = createBrowserRouter([
                 title="Reports are admin-only"
                 message="Ask an admin on your team if you need to see reporting."
               >
-                <ComingSoon title="Reports" />
+                <Reports />
               </AdminOnly>
             ),
           },

@@ -10,6 +10,11 @@ const BASE =
  * A combobox: type to filter the options dropdown, click to pick — and (when
  * `allowCustom`) keep whatever is typed as the value so a brand-new entry can
  * still be added. The input value IS the selected value (controlled by parent).
+ *
+ * The list opens on a deliberate action only — clicking the field or the
+ * chevron, typing, or ArrowDown from the keyboard. It deliberately does NOT
+ * open on focus: drawers autofocus their first field, so that had every drawer
+ * springing open with a list of suggestions nobody had asked for.
  */
 export default function SearchableSelect({
   value = "",
@@ -64,8 +69,14 @@ export default function SearchableSelect({
           onChange(e.target.value);
           setOpen(true);
         }}
-        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
         onKeyDown={(e) => {
+          // Focus alone doesn't open the list, so keyboard users need a way in.
+          if (e.key === "ArrowDown" && !open) {
+            e.preventDefault();
+            setOpen(true);
+            return;
+          }
           // Keep Escape / Enter from bubbling to the drawer (close/submit) while
           // the dropdown is open — they just dismiss the list instead.
           if ((e.key === "Escape" || e.key === "Enter") && open) {

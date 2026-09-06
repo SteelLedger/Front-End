@@ -53,6 +53,21 @@ export function rangeForPeriod(period) {
 }
 
 /**
+ * Which preset a range corresponds to, or "custom" when it matches none.
+ * Lets a controlled picker name its own value without tracking the preset
+ * separately — two sources of truth that can only drift apart.
+ */
+export function matchPeriod(fromISO, toISO) {
+  if (!fromISO || !toISO) return "custom";
+  for (const { value } of PERIOD_OPTIONS) {
+    if (value === "custom") continue;
+    const r = rangeForPeriod(value);
+    if (r && r.from === fromISO && r.to === toISO) return value;
+  }
+  return "custom";
+}
+
+/**
  * The opening range as the API wants it — `{ fromDate, toDate }` in DD/MM/YYYY
  * — so a list's first fetch is already scoped before the filter bar says a
  * word. Every dated list seeds its own state with this.
