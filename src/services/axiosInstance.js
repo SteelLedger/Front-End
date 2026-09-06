@@ -39,8 +39,20 @@ export const POST = (url, data) => axiosInstance.post(url, data);
 export const GET = (url, params) => axiosInstance.get(url, { params });
 export const PUT = (url, data) => axiosInstance.put(url, data);
 export const DELETE = (url, config) => axiosInstance.delete(url, config);
-// Multipart upload. The instance defaults to JSON, but axios clears
-// Content-Type for FormData in the browser so the boundary is set correctly.
-export const UPLOAD = (url, formData) => axiosInstance.post(url, formData);
+/**
+ * Multipart upload of a FormData body.
+ *
+ * The Content-Type override is load-bearing, not decoration. This instance
+ * defaults every request to `application/json`, and axios's own
+ * `transformRequest` reads that header BEFORE the adapter runs: seeing JSON, it
+ * converts FormData into a JSON object, which turns an attached File into `{}`
+ * and posts `{"file":{}}` with no file at all. Naming any non-JSON type here
+ * keeps the FormData intact; the browser adapter then strips this header again
+ * so the real multipart boundary is generated.
+ */
+export const UPLOAD = (url, formData) =>
+  axiosInstance.post(url, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
 
 export default axiosInstance;

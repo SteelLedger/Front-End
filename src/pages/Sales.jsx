@@ -201,7 +201,7 @@ function SaleLines({ sale, onOpen }) {
       >
         {first.label}
       </span>
-      <span className="text-slate-400">{gmToKgDisplay(first.quantity)} kg</span>
+      {/* <span className="text-slate-400">{gmToKgDisplay(first.quantity)} kg</span> */}
       {rest.length > 0 && (
         <button
           type="button"
