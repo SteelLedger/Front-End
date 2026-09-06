@@ -447,21 +447,20 @@ export default function ProductionRecords({
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
+                    <th className="py-3 px-4 font-bold">Raw Material Sheet</th>
                     <SortHeader
                       label="Product"
                       field="productName"
                       {...sortProps}
                     />
-                    <th className="py-3 px-4 font-semibold">
-                      Raw Material Sheet
-                    </th>
+
                     <SortHeader
                       label="Size"
                       field="productSize"
                       {...sortProps}
                     />
                     <SortHeader
-                      label="Total Used Product Qty"
+                      label="Total Used Sheet Qty"
                       field="productQty"
                       {...sortProps}
                     />
@@ -479,6 +478,9 @@ export default function ProductionRecords({
                 <tbody className="divide-y divide-slate-100">
                   {rows.map((r) => (
                     <tr key={r.id} className="hover:bg-slate-50/70 align-top">
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap font-bold">
+                        {r.rawMaterialName}
+                      </td>
                       <td className="py-3 px-4 font-medium text-slate-800 whitespace-nowrap">
                         <span className="inline-flex items-center gap-2.5">
                           {r.productName}
@@ -488,9 +490,7 @@ export default function ProductionRecords({
                           />
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
-                        {r.rawMaterialName}
-                      </td>
+
                       <td className="py-3 px-4 text-slate-600">
                         {r.productSize}
                       </td>

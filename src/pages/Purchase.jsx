@@ -539,7 +539,7 @@ export default function Purchase() {
                       </th>
 
                       <SortHeader
-                        label="Qty"
+                        label="Total Quantity"
                         field="totalQuantity"
                         align="right"
                         {...sortProps}
