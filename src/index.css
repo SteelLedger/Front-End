@@ -9,6 +9,19 @@ html {
   font-size: 106.25%;
 }
 
+/* Every table column header reads as an uppercase label. Done here rather than
+   per-table so a new table is consistent without anyone remembering to add the
+   class, and so the two cases stay in step: the plain <th>, and the sortable
+   ones whose label sits in a <button>. Buttons need saying separately because
+   the browser's form-control defaults reset text-transform, which is why the
+   sortable columns alone were rendering in mixed case. */
+@layer base {
+  thead th,
+  thead th button {
+    text-transform: uppercase;
+  }
+}
+
 /* Hide scrollbar visually while keeping scroll behaviour intact. */
 @layer utilities {
   .no-scrollbar {
