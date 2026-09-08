@@ -5,7 +5,6 @@ import {
   X,
   Inbox,
   Loader2,
-  Eye,
   Pencil,
   Trash2,
   Package,
@@ -16,6 +15,9 @@ import {
   ChevronRight,
 } from "lucide-react";
 import ConfirmDialog from "./ConfirmDialog";
+import ByproductsModal from "./ByproductsModal";
+import { usePageHeader } from "../context/pageHeader";
+import { defaultDateRange } from "../utils/dateRange";
 import {
   GetProductions,
   DeleteProduction,
@@ -31,11 +33,44 @@ function normalizeProduction(raw) {
     productName: raw.productName || "—",
     rawMaterialName: raw.rawMaterialName || "—",
     productSize: raw.productSize || "—",
-    productQtyGm: raw.productQty ?? 0,
+    productQtyGm: raw.totalQty ?? 0,
     wasteQtyGm: raw.wasteQty ?? 0,
     productionDate: raw.productionDate || "",
     byProducts: Array.isArray(raw.byProducts) ? raw.byProducts : [],
   };
+}
+
+/**
+ * ByproductsToggle
+ * Opens the byproducts dialog for one run. It carries the count when the list
+ * response gave us one — worth seeing before clicking — and falls back to a
+ * plain label when it didn't. A row known to have none reads as flat text,
+ * since there is nothing behind it to open.
+ *
+ * Spacing is the caller's: the table sets it beside the product name, the
+ * card sets it underneath.
+ */
+function ByproductsToggle({ count, onClick, className = "" }) {
+  if (count === 0) {
+    return (
+      <span className={`text-[11px] text-slate-300 ${className}`}>
+        No byproducts
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="View byproducts"
+      className={`inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:bg-blue-50 hover:text-[#1E4D96] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${className}`}
+    >
+      <Boxes size={12} />
+      {count == null
+        ? "Byproducts"
+        : `${count} byproduct${count === 1 ? "" : "s"}`}
+    </button>
+  );
 }
 
 function extractProductions(res) {
@@ -100,7 +135,7 @@ function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
 
 function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
       <span
         className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
@@ -120,7 +155,12 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
  * `onEdit(id)` opens the parent's drawer in edit mode; `reloadKey` triggers a
  * refetch after an external add/edit.
  */
-export default function ProductionRecords({ onEdit, reloadKey }) {
+export default function ProductionRecords({
+  onEdit,
+  onAddProduct,
+  onDeleted,
+  reloadKey,
+}) {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
   const [total, setTotal] = useState(0);
@@ -132,14 +172,47 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
   const [sortBy, setSortBy] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
+  // { fromDate, toDate } as DD/MM/YYYY — opens on the current month.
+  const [dateRange, setDateRange] = useState(defaultDateRange);
+
+  // The Product page owns the topbar action; this only adds the date filter.
+  usePageHeader({
+    actionLabel: "Add Product",
+    onAction: onAddProduct,
+    dateFilter: true,
+    onDateChange: (range) => {
+      setDateRange(range);
+      setPage(1);
+    },
+  });
 
   const [confirmState, setConfirmState] = useState(null);
-  // Byproducts viewer: { loading, productName, byProducts } | null
+  // Byproducts dialog: { loading, productName, byProducts } | null
   const [viewState, setViewState] = useState(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  async function openView(row) {
+  /**
+   * The list response normally carries `byProducts` on every row, so a count
+   * is known up front and a 0 really means none. If nothing on the page has
+   * any, that could equally mean this endpoint stopped returning them — so
+   * rather than claiming "no byproducts" across the board, the rows stay
+   * openable and the dialog fetches its own detail.
+   */
+  const countsAreKnown = rows.some((r) => r.byProducts.length > 0);
+  const countFor = (row) =>
+    countsAreKnown || row.byProducts.length ? row.byProducts.length : null;
+
+  async function openByproducts(row) {
+    // Rows the list already gave us byproducts for open with no round trip.
+    if (row.byProducts.length) {
+      setViewState({
+        loading: false,
+        productName: row.productName,
+        byProducts: row.byProducts,
+      });
+      return;
+    }
     setViewState({
       loading: true,
       productName: row.productName,
@@ -176,6 +249,8 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
     try {
       const res = await GetProductions({
         search: debounced,
+        fromDate: dateRange.fromDate,
+        toDate: dateRange.toDate,
         sortBy: sortBy || undefined,
         sortOrder: sortBy ? sortOrder : undefined,
         page,
@@ -191,7 +266,7 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
     } finally {
       setLoading(false);
     }
-  }, [debounced, sortBy, sortOrder, page]);
+  }, [debounced, dateRange, sortBy, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -221,6 +296,9 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
     try {
       await DeleteProduction(row.id);
       toast.success("Production deleted");
+      // Deleting restores the sheet's stock, so the parent's sheet list is now
+      // out of date too.
+      onDeleted?.();
       if (rows.length === 1 && page > 1) setPage((p) => p - 1);
       else load();
     } catch (err) {
@@ -299,28 +377,90 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
             <p className="text-sm">
               {debounced
                 ? "No productions match your search."
-                : "No productions yet. Click Add Product to cut your first one."}
+                : "No productions in this period. Click Add Product to cut your first one."}
             </p>
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Phones get cards — the table needs 760px. */}
+            <div className="divide-y divide-slate-100 xl:hidden">
+              {rows.map((r) => (
+                <div key={r.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-800">
+                        {r.productName}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">
+                        from {r.rawMaterialName} · {fmtDate(r.productionDate)}
+                      </p>
+                      <ByproductsToggle
+                        className="mt-1.5"
+                        count={countFor(r)}
+                        onClick={() => openByproducts(r)}
+                      />
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onEdit(r.id)}
+                        aria-label="Edit production"
+                        className="rounded-md p-2.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => requestDelete(r)}
+                        aria-label="Delete production"
+                        className="rounded-md p-2.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <dl className="mt-2.5 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                    <div>
+                      <dt className="text-slate-400">Size</dt>
+                      <dd className="mt-0.5 font-semibold text-slate-700">
+                        {r.productSize || "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-400">Produced</dt>
+                      <dd className="mt-0.5 font-semibold text-slate-900">
+                        {gmToKgDisplay(r.productQtyGm)} kg
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-400">Waste</dt>
+                      <dd className="mt-0.5 font-semibold text-slate-700">
+                        {gmToKgDisplay(r.wasteQtyGm)} kg
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto xl:block">
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
+                    <th className="py-3 px-4 font-bold">Raw Material Sheet</th>
                     <SortHeader
                       label="Product"
                       field="productName"
                       {...sortProps}
                     />
-                    <th className="py-3 px-4 font-semibold">Raw Material</th>
+
                     <SortHeader
                       label="Size"
                       field="productSize"
                       {...sortProps}
                     />
                     <SortHeader
-                      label="Product Qty"
+                      label="Total Used Sheet Qty"
                       field="productQty"
                       {...sortProps}
                     />
@@ -338,12 +478,19 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
                 <tbody className="divide-y divide-slate-100">
                   {rows.map((r) => (
                     <tr key={r.id} className="hover:bg-slate-50/70 align-top">
-                      <td className="py-3 px-4 font-medium text-slate-800 whitespace-nowrap">
-                        {r.productName}
-                      </td>
-                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap font-bold">
                         {r.rawMaterialName}
                       </td>
+                      <td className="py-3 px-4 font-medium text-slate-800 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2.5">
+                          {r.productName}
+                          <ByproductsToggle
+                            count={countFor(r)}
+                            onClick={() => openByproducts(r)}
+                          />
+                        </span>
+                      </td>
+
                       <td className="py-3 px-4 text-slate-600">
                         {r.productSize}
                       </td>
@@ -358,15 +505,6 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openView(r)}
-                            aria-label="View byproducts"
-                            title="View byproducts"
-                            className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
-                          >
-                            <Eye size={15} />
-                          </button>
                           <button
                             type="button"
                             onClick={() => onEdit(r.id)}
@@ -403,7 +541,7 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((n) => Math.max(1, n - 1))}
-                    className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     aria-label="Previous page"
                   >
                     <ChevronLeft size={16} />
@@ -412,7 +550,7 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
                     type="button"
                     disabled={page >= totalPages}
                     onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
-                    className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     aria-label="Next page"
                   >
                     <ChevronRight size={16} />
@@ -423,6 +561,8 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
           </>
         )}
       </div>
+
+      <ByproductsModal state={viewState} onClose={() => setViewState(null)} />
 
       <ConfirmDialog
         open={!!confirmState}
@@ -436,59 +576,6 @@ export default function ProductionRecords({ onEdit, reloadKey }) {
           fn?.();
         }}
       />
-
-      {/* Byproducts viewer */}
-      {viewState && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/40"
-            onClick={() => setViewState(null)}
-          />
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">
-                Byproducts
-              </h3>
-              <button
-                type="button"
-                onClick={() => setViewState(null)}
-                aria-label="Close"
-                className="rounded text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <p className="mb-3 text-xs text-balck">
-              Product Name : {viewState.productName}
-            </p>
-            {viewState.loading ? (
-              <div className="flex justify-center py-6 text-slate-400">
-                <Loader2 size={20} className="animate-spin" />
-              </div>
-            ) : viewState.byProducts.length === 0 ? (
-              <p className="py-2 text-sm text-slate-500">
-                No byproducts for this product.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {viewState.byProducts.map((b, i) => (
-                  <li
-                    key={b._id || i}
-                    className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
-                  >
-                    <span className="text-sm text-slate-700">
-                      {b.byProductName}
-                    </span>
-                    <span className="text-sm font-semibold text-slate-900">
-                      {gmToKgDisplay(b.qty)} kg
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

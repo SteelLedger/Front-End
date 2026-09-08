@@ -49,7 +49,7 @@ export default function PartyFilter({ value = [], onChange }) {
         onClick={() => setOpen((o) => !o)}
         aria-label="Filter parties"
         title="Filter parties"
-        className={`relative flex h-6 w-6 items-center justify-center rounded transition-colors ${
+        className={`relative flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
           active
             ? "bg-blue-50 text-[#1E4D96]"
             : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"

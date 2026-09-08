@@ -1,0 +1,6 @@
+name,partyType,phone,email,billingName,tin,status,openingBalance,asOfDate,balanceType
+Acme Steel Suppliers,supplier,9876543210,acme@example.com,Acme Steel Pvt Ltd,27AABCA1234A1Z5,active,50000,01/04/2026,to_pay
+Reliance Retail,customer,9123456780,accounts@reliance.com,Reliance Retail Ltd,27AABCR5678B2Z6,active,25000,15/03/2026,to_receive
+Local Scrap Dealer,supplier,9988776655,,,,active,,,
+Metro Builders,customer,9012345678,metro@builders.com,,,inactive,,,
+Global Metals Inc,supplier,8899001122,global@metals.com,Global Metals Inc,,active,100000,01/01/2026,to_pay

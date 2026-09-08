@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "react-toastify";
 import {
-  Plus,
   Search,
   X,
   Pencil,
@@ -17,16 +16,22 @@ import {
   ChevronRight,
 } from "lucide-react";
 import RawMaterialDrawer from "../components/RawMaterialDrawer";
+import { usePageHeader } from "../context/pageHeader";
+import { defaultDateRange } from "../utils/dateRange";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import ConfirmDialog from "../components/ConfirmDialog";
+import PurchaseBillModal from "../components/PurchaseBillModal";
+import { emptyPartyForm, buildPartyPayload } from "../utils/party";
+import { gmToKgDisplay } from "../utils/units";
 import {
-  emptyPartyForm,
-  buildPartyPayload,
-  todayISO,
-  isoToDMY,
-  dmyToISO,
-} from "../utils/party";
-import { kgToGm, gmToKg, gmToKgDisplay } from "../utils/units";
+  SORTABLE_FIELDS,
+  emptyPurchaseForm,
+  buildPurchasePayload,
+  normalizePurchase,
+  purchaseToForm,
+  extractPurchases,
+  lineLabel,
+} from "../utils/purchase";
 import {
   GetParties,
   createParty,
@@ -38,66 +43,39 @@ import {
 
 const PAGE_SIZE = 10;
 
-function emptySheetForm() {
-  return {
-    partyId: "",
-    supplier: "", // supplier display name
-    invoiceNumber: "",
-    date: todayISO(),
-    size: "",
-    point: "",
-    grade: "",
-    quantity: "",
-    error: "",
-    errorFields: [],
-  };
-}
+/**
+ * A bill's items in one line: the first material, then a pill for the rest.
+ * Keeping it to a single line is what makes every row the same height — the
+ * full breakdown lives in the bill modal.
+ */
+function PurchaseLines({ lines = [], onOpen }) {
+  if (!lines.length) return <span className="text-slate-400">—</span>;
+  const [first, ...rest] = lines;
 
-function normalizePurchase(raw) {
-  return {
-    id: raw._id ?? raw.id,
-    partyId:
-      (typeof raw.partyId === "object" ? raw.partyId?._id : raw.partyId) ?? "",
-    supplier: raw.supplierName ?? raw.supplier ?? "",
-    invoiceNumber: raw.invoiceNumber ?? "",
-    date: raw.date ?? "",
-    size: raw.size ?? "",
-    point: raw.point ?? "",
-    grade: raw.grade ?? "",
-    rawMaterialName: raw.rawMaterialName ?? "",
-    quantity: raw.quantity ?? 0,
-  };
-}
+  return (
+    <div className="flex items-center gap-2 whitespace-nowrap text-xs">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1E4D96]" />
+      <span className="font-medium text-slate-700">{lineLabel(first)}</span>
 
-// Dig the list + summary + total out of the response envelope.
-function extractPurchases(res) {
-  const body = res?.data ?? {};
-  const d = body.data ?? {};
-  const list = Array.isArray(d) ? d : (d.purchases ?? d.results ?? []);
-  const summary = (Array.isArray(d) ? {} : d.summary) ?? {};
-  const total = body.meta?.pagination?.total ?? (Array.isArray(list) ? list.length : 0);
-  return {
-    list: Array.isArray(list) ? list : [],
-    summary,
-    total: Number(total) || 0,
-  };
-}
-
-function buildPurchasePayload(f) {
-  return {
-    partyId: f.partyId,
-    invoiceNumber: f.invoiceNumber.trim(),
-    date: isoToDMY(f.date),
-    size: String(f.size).trim(),
-    point: String(f.point).trim(),
-    grade: String(f.grade).trim(),
-    quantity: kgToGm(f.quantity), // UI kg -> backend grams
-  };
+      {rest.length > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="-my-2 rounded-md bg-blue-50 px-2 py-2 text-[11px] font-semibold text-[#1E4D96] transition-colors hover:bg-blue-100"
+        >
+          +{rest.length} more
+        </button>
+      )}
+    </div>
+  );
 }
 
 function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
       <span
         className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
@@ -117,12 +95,16 @@ function SortIcon({ active, dir }) {
       <ChevronUp
         size={12}
         strokeWidth={2.5}
-        className={active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"}
+        className={
+          active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
       />
       <ChevronDown
         size={12}
         strokeWidth={2.5}
-        className={active && dir === "desc" ? "text-[#1E4D96]" : "text-slate-300"}
+        className={
+          active && dir === "desc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
       />
     </span>
   );
@@ -130,7 +112,9 @@ function SortIcon({ active, dir }) {
 
 function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
   return (
-    <th className={`py-3 px-4 font-semibold ${align === "right" ? "text-right" : ""}`}>
+    <th
+      className={`py-3 px-4 font-semibold ${align === "right" ? "text-right" : ""}`}
+    >
       <button
         type="button"
         onClick={() => onSort(field)}
@@ -158,15 +142,29 @@ export default function Purchase() {
   const [sortBy, setSortBy] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
+  // { fromDate, toDate } as DD/MM/YYYY — opens on the current month.
+  const [dateRange, setDateRange] = useState(defaultDateRange);
+
+  usePageHeader({
+    actionLabel: "Add Purchase",
+    onAction: () => openAddDrawer(),
+    dateFilter: true,
+    onDateChange: (range) => {
+      setDateRange(range);
+      setPage(1);
+    },
+  });
 
   // Drawer / form state
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mode, setMode] = useState("add"); // "add" | "edit"
   const [editingId, setEditingId] = useState(null);
-  const [formState, setFormState] = useState(emptySheetForm);
+  const [formState, setFormState] = useState(emptyPurchaseForm);
   const [saving, setSaving] = useState(false);
 
   const [confirmState, setConfirmState] = useState(null);
+  // Which bill's full breakdown is open in the modal.
+  const [openBill, setOpenBill] = useState(null);
 
   // Suppliers (parties) for the drawer dropdown.
   const [suppliers, setSuppliers] = useState([]);
@@ -193,6 +191,8 @@ export default function Purchase() {
     try {
       const res = await GetPurchases({
         search: debouncedQuery,
+        fromDate: dateRange.fromDate,
+        toDate: dateRange.toDate,
         sortBy: sortBy || undefined,
         sortOrder: sortBy ? sortOrder : undefined,
         page,
@@ -209,7 +209,7 @@ export default function Purchase() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, sortBy, sortOrder, page]);
+  }, [debouncedQuery, dateRange, sortBy, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -226,7 +226,12 @@ export default function Purchase() {
     };
     async function loadSuppliers() {
       try {
-        const first = await GetParties({ page: 1, limit: 100 });
+        // Only suppliers belong in a purchase's supplier picker.
+        const first = await GetParties({
+          filter: ["supplier"],
+          page: 1,
+          limit: 100,
+        });
         const all = [...partiesOf(first)];
         const totalPages = Math.min(
           first?.data?.meta?.pagination?.totalPages ?? 1,
@@ -235,7 +240,7 @@ export default function Purchase() {
         if (totalPages > 1) {
           const rest = await Promise.all(
             Array.from({ length: totalPages - 1 }, (_, i) =>
-              GetParties({ page: i + 2, limit: 100 })
+              GetParties({ filter: ["supplier"], page: i + 2, limit: 100 })
                 .then(partiesOf)
                 .catch(() => []),
             ),
@@ -260,6 +265,8 @@ export default function Purchase() {
   }, []);
 
   function toggleSort(field) {
+    // The API dropped the per-line sort keys when bills went multi-item.
+    if (!SORTABLE_FIELDS.includes(field)) return;
     if (sortBy === field) setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
     else {
       setSortBy(field);
@@ -271,26 +278,14 @@ export default function Purchase() {
   function openAddDrawer() {
     setMode("add");
     setEditingId(null);
-    setFormState(emptySheetForm());
+    setFormState(emptyPurchaseForm());
     setDrawerOpen(true);
   }
 
   function openEditDrawer(p) {
     setMode("edit");
     setEditingId(p.id);
-    setFormState({
-      partyId: p.partyId || "",
-      supplier: p.supplier || "",
-      invoiceNumber: p.invoiceNumber || "",
-      date: p.date ? dmyToISO(p.date) : todayISO(),
-      // stored grams -> kg for the input
-      size: p.size || "",
-      point: p.point || "",
-      grade: p.grade || "",
-      quantity: p.quantity != null ? gmToKg(p.quantity) : "",
-      error: "",
-      errorFields: [],
-    });
+    setFormState(purchaseToForm(p));
     setDrawerOpen(true);
   }
 
@@ -340,7 +335,11 @@ export default function Purchase() {
   // Open the party drawer to create a new supplier, carrying over whatever the
   // user had already typed into the supplier field as the party name.
   function openAddSupplier() {
-    setPartyForm({ ...emptyPartyForm(), name: formState.supplier.trim() });
+    // Anything added from here is a supplier by definition.
+    setPartyForm({
+      ...emptyPartyForm("supplier"),
+      name: formState.supplier.trim(),
+    });
     setPartyOpen(true);
   }
 
@@ -376,29 +375,8 @@ export default function Purchase() {
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Raw Material
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Record incoming raw material (Patta) purchases from your suppliers
-              and keep track of stock by size, point and grade.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={openAddDrawer}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-          >
-            <Plus size={18} strokeWidth={2.5} />
-            Add Purchase
-          </button>
-        </div>
-
         {/* Stats strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <StatCard
             icon={Layers}
             iconBg="bg-blue-50"
@@ -415,6 +393,13 @@ export default function Purchase() {
           />
           <StatCard
             icon={Package}
+            iconBg="bg-amber-50"
+            iconColor="text-amber-600"
+            label="Total Bundles"
+            value={String(summary.totalBundles ?? 0)}
+          />
+          <StatCard
+            icon={Package}
             iconBg="bg-purple-50"
             iconColor="text-purple-600"
             label="Sheet Types"
@@ -425,7 +410,9 @@ export default function Purchase() {
         {/* List panel */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
-            <h2 className="text-base font-semibold text-slate-900">Purchases</h2>
+            <h2 className="text-base font-semibold text-slate-900">
+              Purchases
+            </h2>
             <div className="relative w-full sm:w-80">
               <Search
                 size={16}
@@ -471,29 +458,95 @@ export default function Purchase() {
               <p className="text-sm">
                 {debouncedQuery
                   ? "No purchases match your search."
-                  : "No purchases yet. Add your first one."}
+                  : "No purchases in this period. Add your first one."}
               </p>
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[820px] text-sm">
+              {/* Phones get cards — this table needs 760px to breathe. */}
+              <div className="divide-y divide-slate-100 xl:hidden">
+                {purchases.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setOpenBill(p)}
+                    className="cursor-pointer p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-800">
+                          {p.supplier || "—"}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {p.invoiceNumber || "—"} · {p.date || "—"}
+                        </p>
+                      </div>
+                      <div
+                        className="flex shrink-0 items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => openEditDrawer(p)}
+                          aria-label={`Edit purchase ${p.invoiceNumber}`}
+                          className="rounded-md p-2.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => requestDelete(p)}
+                          aria-label={`Delete purchase ${p.invoiceNumber}`}
+                          className="rounded-md p-2.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2">
+                      <PurchaseLines
+                        lines={p.lineItems}
+                        onOpen={() => setOpenBill(p)}
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                      <span>
+                        Bundles:{" "}
+                        <span className="font-semibold text-slate-700">
+                          {p.totalBundles || 0}
+                        </span>
+                      </span>
+                      <span className="font-semibold text-slate-800">
+                        {gmToKgDisplay(p.totalQuantity || 0)} kg
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto xl:block">
+                <table className="w-full min-w-[760px] text-sm">
                   <thead>
                     <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
-                      <SortHeader label="Invoice #" field="invoiceNumber" {...sortProps} />
+                      <SortHeader
+                        label="Invoice #"
+                        field="invoiceNumber"
+                        {...sortProps}
+                      />
                       <th className="py-3 px-4 font-semibold">Supplier</th>
                       <SortHeader label="Date" field="date" {...sortProps} />
-                      <SortHeader label="Size" field="size" {...sortProps} />
-                      <SortHeader label="Point" field="point" {...sortProps} />
-                      <SortHeader label="Grade" field="grade" {...sortProps} />
+                      <th className="py-3 px-4 font-semibold">
+                        Raw Material Sheet
+                      </th>
+
                       <SortHeader
-                        label="Raw Material"
-                        field="rawMaterialName"
+                        label="Total Quantity"
+                        field="totalQuantity"
+                        align="right"
                         {...sortProps}
                       />
                       <SortHeader
-                        label="Qty"
-                        field="quantity"
+                        label="Bundles"
+                        field="totalBundles"
                         align="right"
                         {...sortProps}
                       />
@@ -504,7 +557,11 @@ export default function Purchase() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {purchases.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-50/70">
+                      <tr
+                        key={p.id}
+                        onClick={() => setOpenBill(p)}
+                        className="cursor-pointer hover:bg-slate-50/70"
+                      >
                         <td className="py-3 px-4 font-medium text-slate-700">
                           {p.invoiceNumber || "—"}
                         </td>
@@ -515,21 +572,22 @@ export default function Purchase() {
                           {p.date || "—"}
                         </td>
                         <td className="py-3 px-4 text-slate-600">
-                          {p.size || "—"}
+                          <PurchaseLines
+                            lines={p.lineItems}
+                            onOpen={() => setOpenBill(p)}
+                          />
                         </td>
-                        <td className="py-3 px-4 text-slate-600">
-                          {p.point || "—"}
+
+                        <td className="py-3 px-4 text-right font-medium text-slate-800 whitespace-nowrap">
+                          {gmToKgDisplay(p.totalQuantity || 0)} kg
                         </td>
-                        <td className="py-3 px-4 text-slate-600">
-                          {p.grade || "—"}
+                        <td className="py-3 px-4 text-right font-medium text-slate-700">
+                          {p.totalBundles || 0}
                         </td>
-                        <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
-                          {p.rawMaterialName || "—"}
-                        </td>
-                        <td className="py-3 px-4 text-right font-medium text-slate-800">
-                          {gmToKgDisplay(p.quantity || 0)} kg
-                        </td>
-                        <td className="py-3 px-4">
+                        <td
+                          className="py-3 px-4"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
@@ -567,7 +625,7 @@ export default function Purchase() {
                       type="button"
                       disabled={page <= 1}
                       onClick={() => setPage((n) => Math.max(1, n - 1))}
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Previous page"
                     >
                       <ChevronLeft size={16} />
@@ -575,8 +633,10 @@ export default function Purchase() {
                     <button
                       type="button"
                       disabled={page >= totalPages}
-                      onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      onClick={() =>
+                        setPage((n) => Math.min(totalPages, n + 1))
+                      }
+                      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Next page"
                     >
                       <ChevronRight size={16} />
@@ -610,8 +670,15 @@ export default function Purchase() {
         setFormState={setPartyForm}
         saving={partySaving}
         loading={false}
+        lockPartyType
         onClose={() => setPartyOpen(false)}
         onSubmit={handleSaveSupplier}
+      />
+
+      <PurchaseBillModal
+        open={!!openBill}
+        bill={openBill}
+        onClose={() => setOpenBill(null)}
       />
 
       <ConfirmDialog

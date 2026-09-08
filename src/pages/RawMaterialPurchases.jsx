@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
-  Search,
-  X,
   Boxes,
   ShoppingCart,
   Layers,
@@ -14,20 +12,20 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { GetPurchases, GetRawMaterials } from "../services/apiServices";
+import { GetRawMaterialInboundHistory } from "../services/apiServices";
 import { gmToKgDisplay } from "../utils/units";
 
 const PAGE_SIZE = 10;
 
-function extractPurchases(res) {
+function extractHistory(res) {
   const body = res?.data ?? {};
   const d = body.data ?? {};
-  const list = Array.isArray(d) ? d : (d.purchases ?? d.results ?? []);
-  const summary = (Array.isArray(d) ? {} : d.summary) ?? {};
+  const entries = Array.isArray(d.entries) ? d.entries : [];
   return {
-    list: Array.isArray(list) ? list : [],
-    summary,
-    total: Number(body.meta?.pagination?.total ?? list.length) || 0,
+    entries,
+    rawMaterial: d.rawMaterial ?? null,
+    summary: d.summary ?? {},
+    total: Number(body.meta?.pagination?.total ?? entries.length) || 0,
   };
 }
 
@@ -35,7 +33,7 @@ const dash = (v) => (v && String(v).trim() ? v : "—");
 
 function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <span
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconBg} ${iconColor}`}
       >
@@ -55,7 +53,9 @@ function SortIcon({ active, dir }) {
       <ChevronUp
         size={12}
         strokeWidth={2.5}
-        className={active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"}
+        className={
+          active && dir === "asc" ? "text-[#1E4D96]" : "text-slate-300"
+        }
       />
       <ChevronDown
         size={12}
@@ -87,6 +87,35 @@ function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
   );
 }
 
+/** Where an inbound entry came from: a purchase bill or a production offcut. */
+function EntryTypeBadge({ type }) {
+  const isPurchase = type === "purchase";
+  return (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
+        isPurchase
+          ? "bg-blue-50 text-[#1E4D96]"
+          : "bg-violet-50 text-violet-700"
+      }`}
+    >
+      {isPurchase ? "Purchase" : "Balance patta"}
+    </span>
+  );
+}
+
+/**
+ * The human handle for an entry: a purchase names its invoice and supplier,
+ * a balance patta names the run it was cut from.
+ */
+function entryReference(e) {
+  if (e.entryType === "balance_patta") {
+    return e.sourceRawMaterialName
+      ? `Cut from ${e.sourceRawMaterialName}`
+      : "From production";
+  }
+  return [e.invoiceNumber, e.supplierName].filter(Boolean).join(" · ") || "—";
+}
+
 /** Size / point / grade as small pills under the title. */
 function SpecPill({ label, value }) {
   return (
@@ -114,111 +143,69 @@ export default function RawMaterialPurchases() {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
 
-  // The raw-material row itself, for the header and stock-on-hand.
+  // The endpoint returns the inventory row alongside its history, so the header
+  // no longer has to hunt for it through the paginated /raw-materials list.
   const [material, setMaterial] = useState(null);
 
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [sortBy, setSortBy] = useState("date");
+  // The history endpoint sorts by date only, and has no search.
   const [sortOrder, setSortOrder] = useState("desc");
   const [page, setPage] = useState(1);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setDebouncedQuery(query.trim());
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  const fetchPurchases = useCallback(async () => {
+  const fetchHistory = useCallback(async () => {
     setLoading(true);
     setListError("");
     try {
-      const res = await GetPurchases({
-        rawMaterialId: id,
-        search: debouncedQuery,
-        sortBy,
+      const res = await GetRawMaterialInboundHistory(id, {
         sortOrder,
         page,
         limit: PAGE_SIZE,
       });
-      const { list, summary: s, total: t } = extractPurchases(res);
-      setRows(list);
+      const {
+        entries,
+        rawMaterial,
+        summary: s,
+        total: t,
+      } = extractHistory(res);
+      setRows(entries);
+      setMaterial(rawMaterial);
       setSummary(s);
       setTotal(t);
     } catch {
       setRows([]);
-      setListError("Couldn't load purchases for this raw material.");
+      setListError("Couldn't load inbound history for this raw material.");
     } finally {
       setLoading(false);
     }
-  }, [id, debouncedQuery, sortBy, sortOrder, page]);
+  }, [id, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPurchases();
-  }, [fetchPurchases]);
+    fetchHistory();
+  }, [fetchHistory]);
 
-  // There's no GET /raw-materials/:id, so page the list and pick this row out.
-  // Doing it here (rather than passing state through the link) keeps the page
-  // identical on a refresh or a shared URL.
-  useEffect(() => {
-    let alive = true;
-    async function loadMaterial() {
-      const rmOf = (res) => {
-        const d = res?.data?.data ?? {};
-        return Array.isArray(d) ? d : (d.rawMaterials ?? []);
-      };
-      try {
-        const first = await GetRawMaterials({ page: 1, limit: 100 });
-        let all = rmOf(first);
-        const pages = Math.min(
-          first?.data?.meta?.pagination?.totalPages ?? 1,
-          10,
-        );
-        for (let p = 2; p <= pages && !all.some((m) => m._id === id); p++) {
-          const next = await GetRawMaterials({ page: p, limit: 100 });
-          all = all.concat(rmOf(next));
-        }
-        if (alive) setMaterial(all.find((m) => (m._id ?? m.id) === id) ?? null);
-      } catch {
-        if (alive) setMaterial(null); // header falls back to purchase rows
-      }
-    }
-    loadMaterial();
-    return () => {
-      alive = false;
-    };
-  }, [id]);
-
-  function toggleSort(field) {
-    if (sortBy === field) setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
-    else {
-      setSortBy(field);
-      setSortOrder("asc");
-    }
+  // Date is the only sortable field the history endpoint offers.
+  function toggleSort() {
+    setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
     setPage(1);
   }
 
-  // Fall back to the purchase rows when the inventory row hasn't arrived —
-  // every purchase carries the same spec.
+  // Fall back to an entry while the row loads — each one carries the same spec.
   const spec = material ?? rows[0] ?? {};
   const title = spec.rawMaterialName || "Raw material";
   const inStock = material
     ? `${gmToKgDisplay(material.totalQty ?? 0)} kg`
     : "—";
 
-  const sortProps = { sortBy, sortOrder, onSort: toggleSort };
+  const sortProps = { sortBy: "date", sortOrder, onSort: toggleSort };
 
   return (
     <div className="min-h-full space-y-4 bg-[#F7F8FB] p-4 lg:space-y-5 lg:p-5">
       <div className="mx-auto max-w-[1400px]">
         <Link
           to="/inventory"
-          className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-[#1E4D96]"
+          className="-ml-2 mb-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-[#1E4D96]"
         >
           <ArrowLeft size={15} />
           Back to Raw Material
@@ -268,18 +255,18 @@ export default function RawMaterialPurchases() {
             value={inStock}
           />
           <StatCard
-            icon={Layers}
+            icon={ShoppingCart}
             iconBg="bg-emerald-50"
             iconColor="text-emerald-600"
-            label="Total purchased"
-            value={`${gmToKgDisplay(summary.totalQuantity || 0)} kg`}
+            label="From purchases"
+            value={`${gmToKgDisplay(summary.totalPurchaseQty || 0)} kg`}
           />
           <StatCard
-            icon={ShoppingCart}
+            icon={Layers}
             iconBg="bg-violet-50"
             iconColor="text-violet-600"
-            label="Purchase bills"
-            value={String(total)}
+            label="From balance patta"
+            value={`${gmToKgDisplay(summary.totalBalancePattaQty || 0)} kg`}
           />
         </div>
 
@@ -287,35 +274,13 @@ export default function RawMaterialPurchases() {
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
             <h2 className="text-base font-semibold text-slate-900">
-              Purchase History
+              Inbound History
               {total > 0 && (
                 <span className="ml-2 text-xs font-medium text-slate-400">
-                  {total} {total === 1 ? "bill" : "bills"}
+                  {total} {total === 1 ? "entry" : "entries"}
                 </span>
               )}
             </h2>
-            <div className="relative w-full sm:w-72">
-              <Search
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search supplier or invoice"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-8 text-sm transition-colors focus:border-[#1E4D96] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30"
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => setQuery("")}
-                  aria-label="Clear search"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
           </div>
 
           {loading ? (
@@ -327,7 +292,7 @@ export default function RawMaterialPurchases() {
               <p className="text-sm">{listError}</p>
               <button
                 type="button"
-                onClick={fetchPurchases}
+                onClick={fetchHistory}
                 className="mt-2 font-medium text-[#1E4D96] hover:underline"
               >
                 Retry
@@ -337,46 +302,72 @@ export default function RawMaterialPurchases() {
             <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
               <Inbox size={32} className="mb-2" />
               <p className="text-sm">
-                {debouncedQuery
-                  ? "No purchases match your search."
-                  : "No purchases recorded for this raw material."}
+                Nothing has come into this raw material yet.
               </p>
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[680px] text-sm">
+              {/* Phones and tablets get rows; the table needs 740px. */}
+              <div className="divide-y divide-slate-100 xl:hidden">
+                {rows.map((e) => (
+                  <div key={e._id} className="flex items-center gap-3 p-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <EntryTypeBadge type={e.entryType} />
+                        <span className="text-xs text-slate-400">
+                          {dash(e.date)}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-sm text-slate-700">
+                        {entryReference(e)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-semibold text-slate-900">
+                        {gmToKgDisplay(e.quantity ?? 0)} kg
+                      </p>
+                      {e.bundles != null && (
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {e.bundles} bundles
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto xl:block">
+                <table className="w-full min-w-[740px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <SortHeader label="Date" field="date" {...sortProps} />
-                      <SortHeader
-                        label="Invoice no"
-                        field="invoiceNumber"
-                        {...sortProps}
-                      />
-                      <th className="px-4 py-3 font-semibold">Supplier</th>
-                      <SortHeader
-                        label="Quantity"
-                        field="quantity"
-                        align="right"
-                        {...sortProps}
-                      />
+                      <th className="px-4 py-3 font-semibold">Source</th>
+                      <th className="px-4 py-3 font-semibold">Reference</th>
+                      <th className="px-4 py-3 text-right font-semibold">
+                        Bundles
+                      </th>
+                      <th className="px-4 py-3 text-right font-semibold">
+                        Quantity
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {rows.map((p) => (
-                      <tr key={p._id ?? p.id} className="hover:bg-slate-50/70">
+                    {rows.map((e) => (
+                      <tr key={e._id} className="hover:bg-slate-50/70">
                         <td className="whitespace-nowrap px-4 py-3 text-slate-500">
-                          {dash(p.date)}
+                          {dash(e.date)}
                         </td>
-                        <td className="px-4 py-3 font-medium text-slate-700">
-                          {dash(p.invoiceNumber)}
+                        <td className="px-4 py-3">
+                          <EntryTypeBadge type={e.entryType} />
                         </td>
                         <td className="px-4 py-3 text-slate-700">
-                          {dash(p.supplierName)}
+                          {entryReference(e)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-700">
+                          {e.bundles ?? "—"}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">
-                          {gmToKgDisplay(p.quantity ?? 0)} kg
+                          {gmToKgDisplay(e.quantity ?? 0)} kg
                         </td>
                       </tr>
                     ))}
@@ -395,7 +386,7 @@ export default function RawMaterialPurchases() {
                       disabled={page <= 1}
                       onClick={() => setPage((n) => Math.max(1, n - 1))}
                       aria-label="Previous page"
-                      className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <ChevronLeft size={16} />
                     </button>
@@ -406,7 +397,7 @@ export default function RawMaterialPurchases() {
                         setPage((n) => Math.min(totalPages, n + 1))
                       }
                       aria-label="Next page"
-                      className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <ChevronRight size={16} />
                     </button>

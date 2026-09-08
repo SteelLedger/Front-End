@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { X, Settings, Plus, Trash2 } from "lucide-react";
+import { X, Settings, Trash2 } from "lucide-react";
 import {
   GetAllCountryList,
   GetAllStateListByCountryId,
 } from "../services/apiServices";
-import { emptyAddress } from "../utils/party";
+import { emptyAddress, PARTY_TYPES } from "../utils/party";
 
 const FIELD_CLASS =
   "w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm text-slate-700 " +
@@ -37,6 +37,9 @@ export default function AddPartyDrawer({
   setFormState,
   saving,
   loading,
+  // Set where the context already decides the tag (Purchase's "+ Add
+  // Supplier"), which shows it as fixed rather than asking again.
+  lockPartyType = false,
   onClose,
   onSubmit,
 }) {
@@ -45,6 +48,7 @@ export default function AddPartyDrawer({
   const [countries, setCountries] = useState([]);
   const [statesByCountry, setStatesByCountry] = useState({});
   const [nameError, setNameError] = useState("");
+  const [typeError, setTypeError] = useState("");
 
   // Reset to the first tab each time the drawer opens, and focus the name field.
   useEffect(() => {
@@ -52,12 +56,13 @@ export default function AddPartyDrawer({
     const id = requestAnimationFrame(() => {
       setTab("tax");
       setNameError("");
+      setTypeError("");
       nameRef.current?.focus();
     });
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Party name is the only required field; validate before handing off to save.
+  // Name and party type are the required fields; validate before saving.
   function handleSubmit(e) {
     e.preventDefault();
     if (!formState.name.trim()) {
@@ -65,7 +70,15 @@ export default function AddPartyDrawer({
       nameRef.current?.focus();
       return;
     }
+    if (!formState.partyType) {
+      // The tag lives inside the Tax & Address tab, so open it — an error
+      // pointing at a field the user can't see would be a dead end.
+      setTab("tax");
+      setTypeError("Pick whether this party is a customer or a supplier.");
+      return;
+    }
     setNameError("");
+    setTypeError("");
     onSubmit(e);
   }
 
@@ -142,7 +155,10 @@ export default function AddPartyDrawer({
       ),
     }));
   const addNote = () =>
-    setFormState((f) => ({ ...f, notes: [...(f.notes || []), { content: "" }] }));
+    setFormState((f) => ({
+      ...f,
+      notes: [...(f.notes || []), { content: "" }],
+    }));
   const removeNote = (index) =>
     setFormState((f) => ({
       ...f,
@@ -259,9 +275,9 @@ export default function AddPartyDrawer({
         <button
           type="button"
           onClick={() => addAddress(kind)}
-          className="mt-2 flex items-center gap-1 text-xs font-semibold text-[#1E4D96] hover:underline"
+          className="-ml-2 mt-1.5 flex items-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-[#1E4D96] hover:underline"
         >
-          <Plus size={13} /> {addLabel}
+          {addLabel}
         </button>
       </>
     );
@@ -303,7 +319,7 @@ export default function AddPartyDrawer({
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="rounded hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+              className="-m-2 rounded-md p-2 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
             >
               <X size={20} />
             </button>
@@ -393,6 +409,51 @@ export default function AddPartyDrawer({
                   placeholder="Email ID"
                   className={FIELD_CLASS}
                 />
+
+                {/* Party type — required by the API, and what decides whether
+                    this party appears in Purchase or in Sales. */}
+                <div>
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    Party Type<span className="ml-0.5 text-rose-500">*</span>
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PARTY_TYPES.map((t) => {
+                      const selected = formState.partyType === t.value;
+                      const disabled = lockPartyType && !selected;
+                      return (
+                        <button
+                          key={t.value}
+                          type="button"
+                          disabled={disabled}
+                          aria-pressed={selected}
+                          onClick={() => {
+                            set({ partyType: t.value });
+                            if (typeError) setTypeError("");
+                          }}
+                          className={`rounded-md border px-3 py-2.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
+                            selected
+                              ? "border-[#1E4D96] bg-[#EEF3FB] text-[#1E4D96]"
+                              : disabled
+                                ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
+                                : typeError
+                                  ? "border-rose-400 text-slate-600 hover:bg-slate-50"
+                                  : "border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {typeError && (
+                    <p className="mt-1 text-xs text-rose-600">{typeError}</p>
+                  )}
+                  {lockPartyType && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Added from Purchase, so this party is a supplier.
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -590,7 +651,7 @@ export default function AddPartyDrawer({
                 onClick={addNote}
                 className="flex items-center gap-1 text-xs font-semibold text-[#1E4D96] hover:underline"
               >
-                <Plus size={13} /> Add Another Note
+                Add Another Note
               </button>
             </div>
           )}
@@ -631,7 +692,7 @@ function TabButton({ active, onClick, children, badge }) {
     >
       {children}
       {badge && (
-        <span className="rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+        <span className="rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
           {badge}
         </span>
       )}

@@ -16,6 +16,8 @@ export default function FilterSelect({
   active = false,
   displayLabel,
   width = 200,
+  // Slimmer padding for toolbars that carry the chip inline beside a title.
+  compact = false,
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
@@ -31,22 +33,22 @@ export default function FilterSelect({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
+        className={`inline-flex items-center gap-2 rounded-lg border text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
+          compact ? "px-3 py-1.5" : "px-3.5 py-2"
+        } ${
           active
             ? "border-[#BBD0EC] bg-[#EEF3FB] text-[#1E4D96]"
             : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
         }`}
       >
         {label && (
-          <span
-            className={active ? "text-[#1E4D96]/60" : "text-slate-400"}
-          >
+          <span className={active ? "text-[#1E4D96]/60" : "text-slate-400"}>
             {label}
           </span>
         )}
         <span className="font-semibold">{current}</span>
         <ChevronDown
-          size={15}
+          size={compact ? 14 : 15}
           className={`transition-transform ${open ? "rotate-180" : ""} ${
             active ? "text-[#1E4D96]/70" : "text-slate-400"
           }`}

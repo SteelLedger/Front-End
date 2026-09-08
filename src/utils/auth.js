@@ -55,8 +55,9 @@ export function getInitials(value) {
   return base.slice(0, 2).toUpperCase();
 }
 
-// Best display name from a stored user object + token claims.
-export function getDisplayUser() {
+// The stored user object merged over the token's claims. Login writes both,
+// and the stored object wins where they overlap.
+function readSession() {
   let stored = null;
   try {
     stored = JSON.parse(localStorage.getItem("user"));
@@ -64,7 +65,32 @@ export function getDisplayUser() {
     // ignore malformed user JSON
   }
   const claims = decodeToken(localStorage.getItem("token")) || {};
-  const user = { ...claims, ...(stored || {}) };
+  return { ...claims, ...(stored || {}) };
+}
+
+/**
+ * Who's signed in, in the shape permission checks need: raw lowercase `role`
+ * (not the capitalised one `getDisplayUser` renders) plus the id and email a
+ * list can match its own row against. Every field defaults to "", so a missing
+ * claim reads as "not an admin, matches nobody" rather than throwing.
+ */
+export function getCurrentUser() {
+  const user = readSession();
+  return {
+    id: user._id ?? user.id ?? user.userId ?? user.sub ?? "",
+    email: (user.email || "").toLowerCase(),
+    role: (user.role || "").toLowerCase(),
+  };
+}
+
+/** Admin-only screens (member management) gate on this. */
+export function isAdmin() {
+  return getCurrentUser().role === "admin";
+}
+
+// Best display name from a stored user object + token claims.
+export function getDisplayUser() {
+  const user = readSession();
   const email = user.email || "";
   const name = user.name || user.fullName || email || "User";
   const role = user.role

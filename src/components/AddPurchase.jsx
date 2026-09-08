@@ -2,41 +2,13 @@ import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import RawMaterialDrawer from "./RawMaterialDrawer";
 import AddPartyDrawer from "./AddPartyDrawer";
+import { emptyPartyForm, buildPartyPayload } from "../utils/party";
+import { emptyPurchaseForm, buildPurchasePayload } from "../utils/purchase";
 import {
-  emptyPartyForm,
-  buildPartyPayload,
-  todayISO,
-  isoToDMY,
-} from "../utils/party";
-import { kgToGm } from "../utils/units";
-import { GetParties, createParty, createPurchase } from "../services/apiServices";
-
-function emptyForm() {
-  return {
-    partyId: "",
-    supplier: "",
-    invoiceNumber: "",
-    date: todayISO(),
-    size: "",
-    point: "",
-    grade: "",
-    quantity: "",
-    error: "",
-    errorFields: [],
-  };
-}
-
-function buildPayload(f) {
-  return {
-    partyId: f.partyId,
-    invoiceNumber: f.invoiceNumber.trim(),
-    date: isoToDMY(f.date),
-    size: String(f.size).trim(),
-    point: String(f.point).trim(),
-    grade: String(f.grade).trim(),
-    quantity: kgToGm(f.quantity), // UI kg -> backend grams
-  };
-}
+  GetParties,
+  createParty,
+  createPurchase,
+} from "../services/apiServices";
 
 /**
  * AddPurchase
@@ -45,7 +17,7 @@ function buildPayload(f) {
  * `onCreated` after a successful create so the parent can refresh.
  */
 export default function AddPurchase({ open, onClose, onCreated }) {
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(emptyPurchaseForm);
   const [saving, setSaving] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
 
@@ -56,7 +28,7 @@ export default function AddPurchase({ open, onClose, onCreated }) {
   // Reset the form each time the drawer opens.
   useEffect(() => {
     if (!open) return;
-    const id = requestAnimationFrame(() => setForm(emptyForm()));
+    const id = requestAnimationFrame(() => setForm(emptyPurchaseForm()));
     return () => cancelAnimationFrame(id);
   }, [open]);
 
@@ -69,7 +41,12 @@ export default function AddPurchase({ open, onClose, onCreated }) {
     };
     async function loadSuppliers() {
       try {
-        const first = await GetParties({ page: 1, limit: 100 });
+        // Only suppliers belong in a purchase's supplier picker.
+        const first = await GetParties({
+          filter: ["supplier"],
+          page: 1,
+          limit: 100,
+        });
         const all = [...partiesOf(first)];
         const pages = Math.min(
           first?.data?.meta?.pagination?.totalPages ?? 1,
@@ -78,7 +55,7 @@ export default function AddPurchase({ open, onClose, onCreated }) {
         if (pages > 1) {
           const rest = await Promise.all(
             Array.from({ length: pages - 1 }, (_, i) =>
-              GetParties({ page: i + 2, limit: 100 })
+              GetParties({ filter: ["supplier"], page: i + 2, limit: 100 })
                 .then(partiesOf)
                 .catch(() => []),
             ),
@@ -103,7 +80,8 @@ export default function AddPurchase({ open, onClose, onCreated }) {
   }, []);
 
   function openAddSupplier() {
-    setPartyForm({ ...emptyPartyForm(), name: form.supplier.trim() });
+    // Anything added from here is a supplier by definition.
+    setPartyForm({ ...emptyPartyForm("supplier"), name: form.supplier.trim() });
     setPartyOpen(true);
   }
 
@@ -138,7 +116,7 @@ export default function AddPurchase({ open, onClose, onCreated }) {
     if (!form.partyId) return; // drawer surfaces the field errors
     setSaving(true);
     try {
-      await createPurchase(buildPayload(form));
+      await createPurchase(buildPurchasePayload(form));
       toast.success("Raw material added");
       onCreated?.();
       onClose?.();
@@ -171,6 +149,7 @@ export default function AddPurchase({ open, onClose, onCreated }) {
         setFormState={setPartyForm}
         saving={partySaving}
         loading={false}
+        lockPartyType
         onClose={() => setPartyOpen(false)}
         onSubmit={handleSaveSupplier}
       />

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import { Calendar, ChevronDown, X } from "lucide-react";
+import { Calendar, ChevronDown, RotateCcw } from "lucide-react";
 import MenuPopover from "./MenuPopover";
-import { formatDateRange } from "../utils/sales";
+import { formatDateRange, todayISO } from "../utils/dateRange";
 
 const DATE_INPUT =
   "date-field relative w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm " +
@@ -15,12 +15,20 @@ const DATE_INPUT =
  * the dd-mm-yyyy placeholders and duplicate browser calendar glyphs read as
  * clutter, and an empty range gave no hint that nothing was being filtered.
  */
-export default function DateRangeFilter({ from, to, onChange, onClear }) {
+export default function DateRangeFilter({
+  from,
+  to,
+  onChange,
+  onReset,
+  canReset,
+}) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
   const active = !!(from || to);
 
   const invalid = from && to && from > to;
+  // Same rule as the compact menu: nothing past today is selectable.
+  const today = todayISO();
 
   return (
     <>
@@ -30,7 +38,7 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
+        className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
           active
             ? "border-[#BBD0EC] bg-[#EEF3FB] text-[#1E4D96]"
             : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
@@ -64,7 +72,7 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
             <input
               type="date"
               value={from}
-              max={to || undefined}
+              max={to || today}
               onChange={(e) => onChange("from", e.target.value)}
               className={DATE_INPUT}
             />
@@ -77,6 +85,7 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
               type="date"
               value={to}
               min={from || undefined}
+              max={today}
               onChange={(e) => onChange("to", e.target.value)}
               className={DATE_INPUT}
             />
@@ -91,11 +100,11 @@ export default function DateRangeFilter({ from, to, onChange, onClear }) {
           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
             <button
               type="button"
-              onClick={onClear}
-              disabled={!active}
+              onClick={onReset}
+              disabled={!canReset}
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
             >
-              <X size={13} /> Clear
+              <RotateCcw size={13} /> Reset
             </button>
             <button
               type="button"

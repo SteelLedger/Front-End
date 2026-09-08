@@ -4,7 +4,6 @@ import {
   Search,
   Printer,
   FileSpreadsheet,
-  Plus,
   Pencil,
   Phone,
   Clock,
@@ -16,16 +15,23 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  UserRound,
+  Truck,
   Trash2,
   TrendingUp,
   ShoppingCart,
   Wallet,
   Inbox,
   Loader2,
-  StickyNote,
+  Info,
 } from "lucide-react";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import PartyFilter from "../components/PartyFilter";
+import DateFilterBar from "../components/DateFilterBar";
+import BulkImportModal from "../components/BulkImportModal";
+import { usePageHeader } from "../context/pageHeader";
+import { defaultDateRange } from "../utils/dateRange";
+import NotesModal from "../components/NotesModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import {
   emptyAddress,
@@ -40,8 +46,7 @@ import {
   createParty,
   updateParty,
   DeleteParty,
-  GetTransactionWithParty,
-  GetTransactionWithPartyAndPurchase,
+  GetTransactions,
 } from "../services/apiServices";
 
 const PAGE_SIZE = 10;
@@ -164,7 +169,9 @@ function normalizeParty(raw) {
     name: raw.name || "",
     phone: raw.phone || "",
     amount: signed,
-    type: signed < 0 ? "supplier" : "customer",
+    // The API's own tag. It used to be guessed from the sign of the balance,
+    // which said nothing about what the party actually is.
+    type: raw.partyType || "",
   };
 }
 
@@ -183,7 +190,13 @@ function extractParties(res) {
     d.totalCount ??
     d.count ??
     (Array.isArray(list) ? list.length : 0);
-  return { list: Array.isArray(list) ? list : [], total: Number(total) || 0 };
+  return {
+    list: Array.isArray(list) ? list : [],
+    // { totalParties, totalSuppliers, totalCustomers } — counted server-side
+    // across the whole filtered set, not just the page on screen.
+    summary: Array.isArray(d) ? {} : (d.summary ?? {}),
+    total: Number(total) || 0,
+  };
 }
 
 // Map a full party (GET /parties/:id) into the drawer form. Address state/country
@@ -218,6 +231,7 @@ function partyToForm(d) {
   return {
     ...emptyPartyForm(),
     name: d.name || "",
+    partyType: d.partyType || "",
     phone: d.phone || "",
     email: d.email || "",
     billingName: d.billingName || "",
@@ -275,7 +289,7 @@ function extractTxns(res) {
 
 function StatCard({ icon: Icon, iconBg, iconColor, label, value, valueColor }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
       <span
         className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
@@ -314,10 +328,11 @@ function SortIcon({ active, dir }) {
   );
 }
 
-function IconButton({ children, title, colorClass }) {
+function IconButton({ children, title, colorClass, onClick }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       title={title}
       aria-label={title}
       className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50 ${colorClass}`}
@@ -346,6 +361,7 @@ function HeaderIconButton({ children, title, onClick }) {
 function Parties() {
   // Server-driven list state
   const [parties, setParties] = useState([]);
+  const [summary, setSummary] = useState({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState("");
@@ -356,6 +372,16 @@ function Parties() {
   const [sortKey, setSortKey] = useState(null); // "name" | "amount"
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
+  const [importOpen, setImportOpen] = useState(false);
+
+  // Only the two add actions go to the topbar; the date filter belongs to the
+  // transactions panel below, which scopes one party's ledger — not the roster.
+  usePageHeader({
+    actionLabel: "Add Party",
+    onAction: () => openAddModal(),
+    secondaryLabel: "Bulk Import",
+    onSecondary: () => setImportOpen(true),
+  });
 
   const [selectedId, setSelectedId] = useState(null);
 
@@ -372,8 +398,7 @@ function Parties() {
 
   // Notes of the selected party (fetched from the detail endpoint).
   const [selectedNotes, setSelectedNotes] = useState([]);
-  const [notesOpen, setNotesOpen] = useState(false); // mobile notes popover
-  const notesRef = useRef(null);
+  const [notesOpen, setNotesOpen] = useState(false); // notes modal
 
   // Transactions (per-party, server-driven)
   const [txns, setTxns] = useState([]);
@@ -384,6 +409,8 @@ function Parties() {
   const [txnFilter, setTxnFilter] = useState("All");
   const [txnSearchOpen, setTxnSearchOpen] = useState(false);
   const [txnSearch, setTxnSearch] = useState("");
+  // { fromDate, toDate } as DD/MM/YYYY — opens on the current month.
+  const [txnRange, setTxnRange] = useState(defaultDateRange);
 
   const detailRef = useRef(null);
 
@@ -411,9 +438,10 @@ function Parties() {
         page,
         limit: PAGE_SIZE,
       });
-      const { list, total: t } = extractParties(res);
+      const { list, summary: s, total: t } = extractParties(res);
       const normalized = list.map(normalizeParty);
       setParties(normalized);
+      setSummary(s);
       setTotal(t);
       setSelectedId((cur) =>
         cur && normalized.some((p) => p.id === cur)
@@ -422,6 +450,7 @@ function Parties() {
       );
     } catch (err) {
       setParties([]);
+      setSummary({});
       setListError("Couldn't load parties.");
       toast.error(err?.response?.data?.message || "Failed to load parties");
     } finally {
@@ -445,15 +474,14 @@ function Parties() {
     setTxnLoading(true);
     setTxnError("");
     try {
-      const types = TXN_FILTER_TYPES[txnFilter] || [];
-      const res = types.length
-        ? await GetTransactionWithPartyAndPurchase(
-            selectedId,
-            types[0],
-            txnPage,
-            TXN_PAGE_SIZE,
-          )
-        : await GetTransactionWithParty(selectedId, txnPage, TXN_PAGE_SIZE);
+      const res = await GetTransactions({
+        partyId: selectedId,
+        type: TXN_FILTER_TYPES[txnFilter],
+        fromDate: txnRange.fromDate,
+        toDate: txnRange.toDate,
+        page: txnPage,
+        limit: TXN_PAGE_SIZE,
+      });
       const { list, total: t } = extractTxns(res);
       setTxns(list.map(normalizeTxn));
       setTxnTotal(t);
@@ -465,7 +493,7 @@ function Parties() {
     } finally {
       setTxnLoading(false);
     }
-  }, [selectedId, txnFilter, txnPage]);
+  }, [selectedId, txnFilter, txnRange, txnPage]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -492,17 +520,6 @@ function Parties() {
     fetchSelectedNotes();
   }, [fetchSelectedNotes]);
 
-  // Close the mobile notes popover on outside click.
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (notesRef.current && !notesRef.current.contains(e.target)) {
-        setNotesOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const selectedParty = parties.find((p) => p.id === selectedId) || null;
 
   // Client-side number search over the currently loaded page (no search param).
@@ -513,16 +530,6 @@ function Parties() {
   }, [txns, txnSearch]);
 
   // Best-effort totals from the current page (no summary endpoint yet).
-  const pageTotals = useMemo(() => {
-    const toCollect = parties
-      .filter((p) => p.amount > 0)
-      .reduce((s, p) => s + p.amount, 0);
-    const toPay = parties
-      .filter((p) => p.amount < 0)
-      .reduce((s, p) => s + Math.abs(p.amount), 0);
-    return { toCollect, toPay };
-  }, [parties]);
-
   function handleSelectParty(id) {
     setSelectedId(id);
     setTxnFilter("All");
@@ -656,28 +663,6 @@ function Parties() {
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Parties Overview
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Monitor customer and supplier relationships, track pending
-              collections, and stay on top of payments to maintain healthy cash
-              flow.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-          >
-            <Plus size={18} strokeWidth={2.5} />
-            Add Party
-          </button>
-        </div>
-
         {/* Stats strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <StatCard
@@ -685,23 +670,21 @@ function Parties() {
             iconBg="bg-blue-50"
             iconColor="text-blue-600"
             label="Total Parties"
-            value={String(total)}
+            value={String(summary.totalParties ?? total)}
           />
           <StatCard
-            icon={ArrowDownLeft}
-            iconBg="bg-emerald-50"
-            iconColor="text-emerald-600"
-            label="To Collect"
-            value={formatINR(pageTotals.toCollect)}
-            valueColor="text-emerald-600"
+            icon={UserRound}
+            iconBg="bg-blue-50"
+            iconColor="text-[#1E4D96]"
+            label="Total Customers"
+            value={String(summary.totalCustomers ?? 0)}
           />
           <StatCard
-            icon={ArrowUpRight}
-            iconBg="bg-rose-50"
-            iconColor="text-rose-600"
-            label="To Pay"
-            value={formatINR(pageTotals.toPay)}
-            valueColor="text-rose-600"
+            icon={Truck}
+            iconBg="bg-violet-50"
+            iconColor="text-violet-600"
+            label="Total Suppliers"
+            value={String(summary.totalSuppliers ?? 0)}
           />
         </div>
 
@@ -726,7 +709,7 @@ function Parties() {
                     type="button"
                     onClick={() => setQuery("")}
                     aria-label="Clear search"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2.5 top-1/2 -mr-2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-600"
                   >
                     <X size={14} />
                   </button>
@@ -739,7 +722,7 @@ function Parties() {
                 <button
                   type="button"
                   onClick={() => toggleSort("name")}
-                  className="flex items-center gap-1 hover:text-slate-600"
+                  className="-my-1.5 flex items-center gap-1 py-1.5 hover:text-slate-600"
                 >
                   Party Name{" "}
                   <SortIcon active={sortKey === "name"} dir={sortDir} />
@@ -755,7 +738,7 @@ function Parties() {
               <button
                 type="button"
                 onClick={() => toggleSort("amount")}
-                className="flex items-center gap-1 hover:text-slate-600"
+                className="-my-1.5 flex items-center gap-1 py-1.5 hover:text-slate-600"
               >
                 Amount <SortIcon active={sortKey === "amount"} dir={sortDir} />
               </button>
@@ -797,7 +780,7 @@ function Parties() {
                         }`}
                       >
                         {isActive && (
-                          <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#1E4D96] rounded-r" />
+                          <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#1E4D96] rounded-r-md" />
                         )}
                         <span
                           className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
@@ -808,10 +791,19 @@ function Parties() {
                         >
                           {getInitials(p.name)}
                         </span>
-                        <span
-                          className={`flex-1 truncate text-sm ${isActive ? "font-semibold text-slate-900" : "text-slate-700"}`}
-                        >
-                          {p.name}
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={`block truncate text-sm ${isActive ? "font-semibold text-slate-900" : "text-slate-700"}`}
+                          >
+                            {p.name}
+                          </span>
+                          {PARTY_TYPE_META[p.type] && (
+                            <span
+                              className={`mt-0.5 inline-block rounded-full px-1.5 py-px text-[10px] font-medium ${PARTY_TYPE_META[p.type].bg} ${PARTY_TYPE_META[p.type].color}`}
+                            >
+                              {PARTY_TYPE_META[p.type].label}
+                            </span>
+                          )}
                         </span>
                         <span
                           className={`text-sm font-medium shrink-0 ${
@@ -830,7 +822,7 @@ function Parties() {
                         onClick={(e) => requestDeleteParty(p, e)}
                         aria-label={`Delete ${p.name}`}
                         title="Delete party"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus:opacity-100 transition-opacity"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -851,7 +843,7 @@ function Parties() {
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     aria-label="Previous page"
                   >
                     <ChevronLeft size={16} />
@@ -860,7 +852,7 @@ function Parties() {
                     type="button"
                     disabled={page >= totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                     aria-label="Next page"
                   >
                     <ChevronRight size={16} />
@@ -895,7 +887,7 @@ function Parties() {
                           onClick={() => openEditModal(selectedParty)}
                           aria-label="Edit party"
                           title="Edit party"
-                          className="text-slate-400 hover:text-[#1E4D96] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50 rounded"
+                          className="-m-2 p-2 text-slate-400 hover:text-[#1E4D96] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50 rounded-md"
                         >
                           <Pencil size={15} />
                         </button>
@@ -914,68 +906,47 @@ function Parties() {
                       )}
                     </div>
                   </div>
-                  {selectedNotes.length > 0 && (
-                    <div className="hidden lg:flex flex-1 min-w-0 max-w-xl flex-col rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 max-h-16 overflow-y-auto">
-                      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                        <StickyNote size={11} /> Notes
-                      </span>
-                      <ul className="text-xs text-slate-600 leading-snug">
-                        {selectedNotes.map((n, i) => (
-                          <li key={n._id || i} className="truncate">
-                            {n.content}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="ml-auto flex items-center gap-2 shrink-0">
                     <IconButton
+                      title={
+                        selectedNotes.length
+                          ? `Notes (${selectedNotes.length})`
+                          : "Notes"
+                      }
+                      onClick={() => setNotesOpen(true)}
+                      colorClass="bg-blue-50 text-[#1E4D96] hover:bg-blue-100"
+                    >
+                      <Info size={16} />
+                    </IconButton>
+                    {/* <IconButton
                       title="WhatsApp"
                       colorClass="bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
                     >
                       <Phone size={16} />
-                    </IconButton>
-                    <IconButton
+                    </IconButton> */}
+                    {/* <IconButton
                       title="Set reminder"
                       colorClass="bg-orange-50 text-orange-600 hover:bg-orange-100"
                     >
                       <Clock size={16} />
-                    </IconButton>
-                    {selectedNotes.length > 0 && (
-                      <div className="relative lg:hidden group" ref={notesRef}>
-                        <button
-                          type="button"
-                          onClick={() => setNotesOpen((o) => !o)}
-                          title="Notes"
-                          aria-label="Notes"
-                          className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-                        >
-                          <StickyNote size={16} />
-                        </button>
-                        <div
-                          className={`absolute right-[-80px] top-11 z-30 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg group-hover:block ${notesOpen ? "block" : "hidden"}`}
-                        >
-                          <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                            <StickyNote size={11} /> Notes
-                          </p>
-                          <ul className="space-y-1 text-xs text-slate-600 max-h-40 overflow-y-auto">
-                            {selectedNotes.map((n, i) => (
-                              <li key={n._id || i}>• {n.content}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
+                    </IconButton> */}
                   </div>
                 </div>
 
                 <div className="flex-1 flex flex-col p-4 sm:p-5">
-                  <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <h3 className="text-base font-semibold text-slate-900">
                       Transactions
                     </h3>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <DateFilterBar
+                        showLabel={false}
+                        showReset={false}
+                        onChange={(range) => {
+                          setTxnRange(range);
+                          setTxnPage(1);
+                        }}
+                      />
                       {txnSearchOpen && (
                         <input
                           autoFocus
@@ -991,9 +962,9 @@ function Parties() {
                       >
                         <Search size={16} />
                       </HeaderIconButton>
-                      <HeaderIconButton title="Print" onClick={handlePrint}>
+                      {/* <HeaderIconButton title="Print" onClick={handlePrint}>
                         <Printer size={16} />
-                      </HeaderIconButton>
+                      </HeaderIconButton> */}
                       <HeaderIconButton
                         title="Export CSV"
                         onClick={handleExportCSV}
@@ -1022,7 +993,7 @@ function Parties() {
                           setTxnFilter(f);
                           setTxnPage(1);
                         }}
-                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/40 ${
+                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/40 ${
                           txnFilter === f
                             ? "bg-slate-900 text-white border-slate-900"
                             : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
@@ -1059,7 +1030,51 @@ function Parties() {
                     </div>
                   ) : (
                     <>
-                      <div className="overflow-x-auto -mx-4 sm:-mx-5">
+                      {/* Phones get rows instead of a 600px table. */}
+                      <div className="-mx-4 divide-y divide-slate-100 xl:hidden">
+                        {filteredTransactions.map((t) => {
+                          const meta = txnMeta(t.type);
+                          const Icon = meta.icon;
+                          return (
+                            <div
+                              key={t.id}
+                              className="flex items-center gap-3 px-4 py-3"
+                            >
+                              <span
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${meta.bg} ${meta.color}`}
+                              >
+                                <Icon size={15} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm text-slate-700">
+                                  {meta.label}
+                                </p>
+                                <p className="mt-0.5 truncate text-xs text-slate-400">
+                                  {t.number} · {t.date}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className="text-sm font-medium text-slate-800">
+                                  {t.total ? formatINR(t.total) : "—"}
+                                </p>
+                                <p
+                                  className={`mt-0.5 text-xs font-medium ${
+                                    t.balance > 0
+                                      ? "text-emerald-600"
+                                      : t.balance < 0
+                                        ? "text-rose-600"
+                                        : "text-slate-400"
+                                  }`}
+                                >
+                                  {t.balance ? formatINR(t.balance) : "—"}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="hidden overflow-x-auto -mx-4 sm:-mx-5 xl:block">
                         <table className="w-full min-w-[600px] text-sm">
                           <thead>
                             <tr className="text-left text-xs font-medium text-slate-400 uppercase tracking-wide border-b border-slate-100">
@@ -1133,7 +1148,7 @@ function Parties() {
                               onClick={() =>
                                 setTxnPage((p) => Math.max(1, p - 1))
                               }
-                              className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                               aria-label="Previous page"
                             >
                               <ChevronLeft size={16} />
@@ -1146,7 +1161,7 @@ function Parties() {
                                   Math.min(txnTotalPages, p + 1),
                                 )
                               }
-                              className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                               aria-label="Next page"
                             >
                               <ChevronRight size={16} />
@@ -1170,6 +1185,18 @@ function Parties() {
         </div>
       </div>
 
+      {importOpen && (
+        <BulkImportModal
+          onClose={() => {
+            setImportOpen(false);
+            // The job runs off a queue, so rows rarely land before this — but
+            // a small file can finish quickly, and refetching costs one call.
+            fetchParties();
+          }}
+          onQueued={fetchParties}
+        />
+      )}
+
       <AddPartyDrawer
         open={modalOpen}
         mode={modalMode}
@@ -1179,6 +1206,13 @@ function Parties() {
         loading={editLoading}
         onClose={() => setModalOpen(false)}
         onSubmit={handleSaveParty}
+      />
+
+      <NotesModal
+        open={notesOpen}
+        partyName={selectedParty?.name}
+        notes={selectedNotes}
+        onClose={() => setNotesOpen(false)}
       />
 
       <ConfirmDialog

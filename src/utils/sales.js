@@ -41,97 +41,12 @@ export const SORTABLE_FIELDS = [
   "createdAt",
 ];
 
-export const PERIOD_OPTIONS = [
-  { value: "today", label: "Today" },
-  { value: "yesterday", label: "Yesterday" },
-  { value: "this_week", label: "This Week" },
-  { value: "this_month", label: "This Month" },
-  { value: "last_month", label: "Last Month" },
-  { value: "this_quarter", label: "This Quarter" },
-  { value: "this_year", label: "This Year" },
-  { value: "custom", label: "Custom" },
-];
-
-function iso(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/** From/to ISO dates for a period preset. `custom` keeps the user's own range. */
-export function rangeForPeriod(period) {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const day = now.getDate();
-
-  switch (period) {
-    case "today":
-      return { from: iso(now), to: iso(now) };
-    case "yesterday": {
-      const d = new Date(y, m, day - 1);
-      return { from: iso(d), to: iso(d) };
-    }
-    case "this_week": {
-      // Week starts Monday.
-      const start = new Date(y, m, day - ((now.getDay() + 6) % 7));
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      return { from: iso(start), to: iso(end) };
-    }
-    case "this_month":
-      return { from: iso(new Date(y, m, 1)), to: iso(new Date(y, m + 1, 0)) };
-    case "last_month":
-      return { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) };
-    case "this_quarter": {
-      const q = Math.floor(m / 3) * 3;
-      return { from: iso(new Date(y, q, 1)), to: iso(new Date(y, q + 3, 0)) };
-    }
-    case "this_year":
-      return { from: iso(new Date(y, 0, 1)), to: iso(new Date(y, 11, 31)) };
-    default:
-      return null;
-  }
-}
-
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
-/** "2026-08-01" -> "01 Aug 2026" */
-export function formatISODate(isoDate) {
-  if (!isoDate) return "";
-  const [y, m, d] = isoDate.split("-");
-  return `${d} ${MONTHS[Number(m) - 1] ?? m} ${y}`;
-}
-
-/** A range as one readable label for the filter chip. */
-export function formatDateRange(fromISO, toISO) {
-  if (!fromISO && !toISO) return "All dates";
-  if (!fromISO) return `Until ${formatISODate(toISO)}`;
-  if (!toISO) return `From ${formatISODate(fromISO)}`;
-  if (fromISO === toISO) return formatISODate(fromISO);
-
-  const [fy, fm, fd] = fromISO.split("-");
-  const [ty, tm, td] = toISO.split("-");
-  // Same year reads fine without repeating it on both sides.
-  if (fy === ty) {
-    return `${fd} ${MONTHS[Number(fm) - 1]} – ${td} ${MONTHS[Number(tm) - 1]} ${ty}`;
-  }
-  return `${formatISODate(fromISO)} – ${formatISODate(toISO)}`;
-}
-
-/** One item line on a sale. `id` is a productId or a byproduct slug. */
+/**
+ * One item line on a sale. `id` is a productId or a byproduct inventory id.
+ * No bundle count: the backend dropped `bundles` from sale lines (and from the
+ * sale/summary totals) on 2026-08-28 — bundles now live on purchases and
+ * productions only.
+ */
 export function emptyLine() {
   return { id: "", name: "", qty: "" }; // qty in kg
 }
@@ -140,7 +55,7 @@ export function emptyLine() {
 export const filledLines = (lines) =>
   (lines || []).filter((l) => l.id && Number(l.qty) > 0);
 
-/** A draft line is ready to add once it has both an item and a quantity. */
+/** A draft line is ready to add once it has an item and a quantity. */
 export const isCompleteLine = (l) => !!l?.id && Number(l?.qty) > 0;
 
 /** Something was typed but the line isn't addable yet. */
@@ -230,6 +145,29 @@ export function normalizeSale(raw) {
     totalByProductQty,
     totalQuantity: totalProductQty + totalByProductQty,
   };
+}
+
+/**
+ * A sale's products and byproducts as one ordered list. Products first, then
+ * byproducts — each carrying its kind so a row can dot them, and byproducts
+ * labelled with the material they came off. Shared by the Sales list (which
+ * shows only the first line) and the items modal (which shows them all).
+ */
+export function saleLines(sale) {
+  return [
+    ...(sale.products ?? []).map((p) => ({
+      key: `p-${p.id || p.name}`,
+      kind: "product",
+      label: p.name || "—",
+      quantity: p.quantity,
+    })),
+    ...(sale.byProducts ?? []).map((b) => ({
+      key: `b-${b.id || b.name}`,
+      kind: "byproduct",
+      label: byProductLabel(b.name, b.rawMaterialName) || "—",
+      quantity: b.quantity,
+    })),
+  ];
 }
 
 /** A normalized sale -> the drawer form (grams back to kg). */

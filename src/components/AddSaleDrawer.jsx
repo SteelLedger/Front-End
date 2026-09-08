@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
   X,
-  Plus,
   Check,
   Package,
   Boxes,
@@ -138,7 +137,7 @@ function LineSection({
 
   return (
     <section
-      className={`rounded-xl border p-3 ${
+      className={`rounded-2xl border p-3 ${
         invalid
           ? "border-rose-300 bg-rose-50/40"
           : "border-slate-200 bg-slate-50/60"
@@ -213,7 +212,6 @@ function LineSection({
             disabled={!canAdd}
             className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#1E4D96] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
           >
-            <Plus size={15} strokeWidth={2.5} />
             Add
           </button>
         </div>
@@ -456,7 +454,7 @@ export default function AddSaleDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
+            className="-m-2 rounded-md p-2 text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
           >
             <X size={20} />
           </button>
@@ -607,11 +605,7 @@ export default function AddSaleDrawer({
               disabled={saving}
               className="inline-flex items-center gap-2 rounded-lg bg-[#1E4D96] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
             >
-              {mode === "add" ? (
-                <Plus size={16} strokeWidth={2.5} />
-              ) : (
-                <Check size={16} strokeWidth={2.5} />
-              )}
+              {mode !== "add" && <Check size={16} strokeWidth={2.5} />}
               {saving
                 ? mode === "add"
                   ? "Adding…"

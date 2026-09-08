@@ -19,6 +19,12 @@ import { gmToKgDisplay } from "../utils/units";
 
 const PAGE_SIZE = 10;
 
+const STATUS_CHIPS = [
+  { value: "all", label: "All" },
+  { value: "in_stock", label: "In stock" },
+  { value: "out_of_stock", label: "Out of stock" },
+];
+
 function normalizeRawMaterial(raw) {
   const totalQty = Number(raw.totalQty ?? raw.quantity ?? 0) || 0;
   return {
@@ -51,7 +57,7 @@ const dash = (v) => (v && String(v).trim() ? v : "—");
 
 function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
       <span
         className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
@@ -124,6 +130,7 @@ export default function Inventory() {
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [status, setStatus] = useState("all");
   const [sortBy, setSortBy] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
@@ -145,6 +152,7 @@ export default function Inventory() {
     try {
       const res = await GetRawMaterials({
         search: debouncedQuery,
+        status,
         sortBy: sortBy || undefined,
         sortOrder: sortBy ? sortOrder : undefined,
         page,
@@ -160,7 +168,7 @@ export default function Inventory() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, sortBy, sortOrder, page]);
+  }, [debouncedQuery, status, sortBy, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -181,27 +189,6 @@ export default function Inventory() {
   return (
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Inventory Raw Material
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Current raw material (Patta) stock on hand, grouped by size, point
-              and grade. Stock is built from purchases.
-            </p>
-          </div>
-          {/* <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1E4D96] hover:bg-[#1A3F7A] active:bg-[#15356A] text-white font-medium text-sm px-5 py-2.5 shadow-sm shadow-blue-200 transition-colors w-full sm:w-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#1E4D96]/50"
-          >
-            <Plus size={18} strokeWidth={2.5} />
-            Add Purchase
-          </button> */}
-        </div>
-
         {/* Stats strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <StatCard
@@ -230,9 +217,30 @@ export default function Inventory() {
         {/* Stock panel */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-100">
-            <h2 className="text-base font-semibold text-slate-900">
-              Stock by Specification
-            </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-base font-semibold text-slate-900">
+                Stock by Specification
+              </h2>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {STATUS_CHIPS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => {
+                      setStatus(c.value);
+                      setPage(1);
+                    }}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                      status === c.value
+                        ? "bg-slate-900 text-white border-slate-900"
+                        : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="relative w-full sm:w-72">
               <Search
                 size={16}
@@ -276,19 +284,54 @@ export default function Inventory() {
             <div className="flex flex-col items-center justify-center text-center py-16 text-slate-400">
               <Inbox size={32} className="mb-2" />
               <p className="text-sm">
-                {debouncedQuery
-                  ? "No stock matches your search."
+                {debouncedQuery || status !== "all"
+                  ? "No stock matches your filters."
                   : "No stock yet. Add raw material from the Purchase tab."}
               </p>
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              {/* Phones get cards — the table needs 720px. */}
+              <div className="divide-y divide-slate-100 xl:hidden">
+                {items.map((g) => (
+                  <Link
+                    key={g.id}
+                    to={`/inventory/${g.id}`}
+                    className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-slate-50/70"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-[#1E4D96]">
+                        {dash(g.rawMaterialName)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        Size {dash(g.size)} · Point {dash(g.point)} · Grade{" "}
+                        {dash(g.grade)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-semibold text-slate-900">
+                        {gmToKgDisplay(g.totalQty)} kg
+                      </p>
+                      <span
+                        className={`mt-1 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          g.status === "in_stock"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-rose-50 text-rose-700"
+                        }`}
+                      >
+                        {g.status === "in_stock" ? "In stock" : "Out of stock"}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto xl:block">
                 <table className="w-full min-w-[720px] text-sm table-fixed">
                   <thead>
                     <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
                       <SortHeader
-                        label="Raw Material"
+                        label="Raw Material Sheet"
                         field="rawMaterialName"
                         {...sortProps}
                       />
@@ -309,7 +352,7 @@ export default function Inventory() {
                         <td className="py-3 px-4 whitespace-nowrap">
                           <Link
                             to={`/inventory/${g.id}`}
-                            className="font-medium text-[#1E4D96] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 rounded"
+                            className="font-medium text-[#1E4D96] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 rounded-md"
                             title={`View purchases for ${g.rawMaterialName}`}
                           >
                             {dash(g.rawMaterialName)}
@@ -356,7 +399,7 @@ export default function Inventory() {
                       type="button"
                       disabled={page <= 1}
                       onClick={() => setPage((n) => Math.max(1, n - 1))}
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Previous page"
                     >
                       <ChevronLeft size={16} />
@@ -367,7 +410,7 @@ export default function Inventory() {
                       onClick={() =>
                         setPage((n) => Math.min(totalPages, n + 1))
                       }
-                      className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+                      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
                       aria-label="Next page"
                     >
                       <ChevronRight size={16} />
