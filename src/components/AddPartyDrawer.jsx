@@ -5,6 +5,7 @@ import {
   GetAllStateListByCountryId,
 } from "../services/apiServices";
 import { emptyAddress, PARTY_TYPES } from "../utils/party";
+import { useFocusTrap, useEnterAdvance } from "../utils/keyboard";
 
 const FIELD_CLASS =
   "w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm text-slate-700 " +
@@ -43,6 +44,10 @@ export default function AddPartyDrawer({
   onClose,
   onSubmit,
 }) {
+  const panelRef = useRef(null);
+  // Tab stays in the drawer; Enter walks to the next field.
+  useFocusTrap(panelRef, open);
+  const onPanelKeyDown = useEnterAdvance(panelRef);
   const nameRef = useRef(null);
   const [tab, setTab] = useState("tax"); // "tax" | "credit"
   const [countries, setCountries] = useState([]);
@@ -287,6 +292,9 @@ export default function AddPartyDrawer({
     <div
       className={`fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`}
       aria-hidden={!open}
+      /* Closed but still mounted — without this its fields stay in the page's
+         tab order and Tab walks through an invisible form. */
+      inert={!open}
     >
       {/* Overlay */}
       <div
@@ -298,6 +306,8 @@ export default function AddPartyDrawer({
 
       {/* Panel */}
       <div
+        ref={panelRef}
+        onKeyDown={onPanelKeyDown}
         role="dialog"
         aria-modal="true"
         aria-label={mode === "add" ? "Add Party" : "Edit Party"}

@@ -4,6 +4,7 @@ import ProductionDrawer from "../components/ProductionDrawer";
 import ProductionRecords from "../components/ProductionRecords";
 import { todayISO } from "../utils/party";
 import { kgToGm, gmToKg } from "../utils/units";
+import { numericText } from "../utils/text";
 import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
 import {
   GetRawMaterials,
@@ -102,12 +103,12 @@ function buildProductionPayload(form, { isEdit = false } = {}) {
   // run rather than sending "" and 0, which would read as "size set, quantity
   // missing" to the API. productBundles is independent: the backend stores it on
   // the production record only and no longer requires it alongside the pair.
-  const size = String(form.productSize).trim();
+  const size = numericText(form.productSize);
   const hasProduct = Number(size) > 0 && Number(form.howMany) > 0;
 
   // Balance patta is its own optional pair, and creates/updates a raw-material
   // row from this size plus the source sheet's point and grade.
-  const balanceSize = String(form.balancePattaSize).trim();
+  const balanceSize = numericText(form.balancePattaSize);
   const hasBalancePatta =
     Number(balanceSize) > 0 && Number(form.balancePattaQty) > 0;
 
