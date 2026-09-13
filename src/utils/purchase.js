@@ -7,6 +7,7 @@
 // a plain integer count.
 
 import { todayISO, isoToDMY, dmyToISO } from "./party";
+import { numericText } from "./text";
 import { kgToGm, gmToKg } from "./units";
 
 // Fields GET /purchases will sort on. The per-line fields (size/point/grade)
@@ -123,7 +124,8 @@ export function buildPurchasePayload(f) {
     invoiceNumber: f.invoiceNumber.trim(),
     date: isoToDMY(f.date),
     lineItems: filledLines(f.lineItems).map((l) => ({
-      size: text(l.size),
+      // Tidied so a half-typed "10." goes over the wire as "10".
+      size: numericText(l.size),
       point: text(l.point),
       grade: text(l.grade),
       quantity: kgToGm(l.quantity),

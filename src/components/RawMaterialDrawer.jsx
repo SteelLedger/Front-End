@@ -13,7 +13,8 @@ import {
   lineTotals,
   lineLabel,
 } from "../utils/purchase";
-import { joinWithAnd, sentenceCase } from "../utils/text";
+import { joinWithAnd, sentenceCase, decimalInput } from "../utils/text";
+import { useFocusTrap, useEnterAdvance } from "../utils/keyboard";
 
 function Field({ label, required, info, children }) {
   return (
@@ -31,7 +32,8 @@ function Field({ label, required, info, children }) {
 // Bill-level required fields (the line items validate separately).
 const REQUIRED = ["supplier", "invoiceNumber", "date"];
 
-// Size / point / grade allow letters and numbers only (no special characters).
+// Point and grade are labels ("120p", "M5"): letters and numbers, nothing else.
+// Size is a measurement and takes a decimal point — see `decimalInput`.
 const alnum = (v) => v.replace(/[^a-zA-Z0-9]/g, "");
 // Bundles is a whole count.
 const digits = (v) => v.replace(/[^0-9]/g, "");
@@ -63,6 +65,10 @@ export default function RawMaterialDrawer({
   onClose,
   onSubmit,
 }) {
+  const panelRef = useRef(null);
+  // Tab stays in the drawer; Enter walks to the next field.
+  useFocusTrap(panelRef, open);
+  const onPanelKeyDown = useEnterAdvance(panelRef);
   const supplierRef = useRef(null);
 
   useEffect(() => {
@@ -272,6 +278,9 @@ export default function RawMaterialDrawer({
     <div
       className={`fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`}
       aria-hidden={!open}
+      /* Closed but still mounted — without this its fields stay in the page's
+         tab order and Tab walks through an invisible form. */
+      inert={!open}
     >
       {/* Overlay */}
       <div
@@ -283,6 +292,8 @@ export default function RawMaterialDrawer({
 
       {/* Panel */}
       <div
+        ref={panelRef}
+        onKeyDown={onPanelKeyDown}
         role="dialog"
         aria-modal="true"
         aria-label={mode === "add" ? "Add Purchase" : "Edit Purchase"}
@@ -426,10 +437,11 @@ export default function RawMaterialDrawer({
                         </span>
                         <input
                           value={line.size}
+                          inputMode="decimal"
                           onChange={(e) =>
-                            updateLine(i, "size", alnum(e.target.value))
+                            updateLine(i, "size", decimalInput(e.target.value))
                           }
-                          placeholder="10"
+                          placeholder="10.5"
                           className={lineClass(i, "size")}
                         />
                       </label>

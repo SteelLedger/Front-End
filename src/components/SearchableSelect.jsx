@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 
 const BASE =
@@ -28,8 +28,12 @@ export default function SearchableSelect({
   noun = "option",
   emptyText,
 }) {
+  const listId = useId();
   const [open, setOpen] = useState(false);
+  // Which option the arrow keys have landed on; -1 is "none highlighted yet".
+  const [active, setActive] = useState(-1);
   const containerRef = useRef(null);
+  const listRef = useRef(null);
   const localRef = useRef(null);
   const ref = inputRef || localRef;
 
@@ -50,10 +54,59 @@ export default function SearchableSelect({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
+  // A highlight the user can't see is worse than none — keep it in view as the
+  // arrow keys walk past the bottom of the 13rem-tall list.
+  useEffect(() => {
+    if (!open || active < 0) return;
+    listRef.current?.children[active]?.scrollIntoView({ block: "nearest" });
+  }, [open, active]);
+
   function pick(opt) {
     onChange(opt);
     setOpen(false);
+    setActive(-1);
     ref.current?.focus();
+  }
+
+  /**
+   * Arrow keys walk the list, Enter takes the highlighted option, Escape
+   * closes. Enter with nothing highlighted just closes the list, so it stays
+   * a way to dismiss rather than a way to pick something at random.
+   *
+   * Both keys stop propagating: the drawer above treats Enter as "next field"
+   * and Escape as "close", and neither should fire while a list is open.
+   */
+  function onKeyDown(e) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!open) {
+        setOpen(true);
+        setActive(e.key === "ArrowDown" ? 0 : filtered.length - 1);
+        return;
+      }
+      if (!filtered.length) return;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      setActive((i) => {
+        const next = i + step;
+        if (next < 0) return filtered.length - 1;
+        if (next >= filtered.length) return 0;
+        return next;
+      });
+      return;
+    }
+    if (e.key === "Enter" && open) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (active >= 0 && filtered[active]) pick(filtered[active]);
+      else setOpen(false);
+      return;
+    }
+    if (e.key === "Escape" && open) {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      setActive(-1);
+    }
   }
 
   return (
@@ -65,26 +118,17 @@ export default function SearchableSelect({
         aria-expanded={open}
         autoComplete="off"
         value={value}
+        aria-autocomplete="list"
+        aria-activedescendant={
+          open && active >= 0 ? `${listId}-opt-${active}` : undefined
+        }
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
+          setActive(-1);
         }}
         onClick={() => setOpen(true)}
-        onKeyDown={(e) => {
-          // Focus alone doesn't open the list, so keyboard users need a way in.
-          if (e.key === "ArrowDown" && !open) {
-            e.preventDefault();
-            setOpen(true);
-            return;
-          }
-          // Keep Escape / Enter from bubbling to the drawer (close/submit) while
-          // the dropdown is open — they just dismiss the list instead.
-          if ((e.key === "Escape" || e.key === "Enter") && open) {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen(false);
-          }
-        }}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
         className={
           invalid
@@ -109,7 +153,11 @@ export default function SearchableSelect({
       </button>
 
       {open && (
-        <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+        <ul
+          ref={listRef}
+          role="listbox"
+          className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+        >
           {filtered.length === 0 ? (
             <li className="px-3 py-2 text-xs text-slate-400">
               {value.trim()
@@ -119,15 +167,25 @@ export default function SearchableSelect({
                 : (emptyText ?? `No ${noun}s yet`)}
             </li>
           ) : (
-            filtered.map((o) => {
+            filtered.map((o, i) => {
               const selected = o.toLowerCase() === q;
+              const highlighted = i === active;
               return (
-                <li key={o}>
+                <li
+                  key={o}
+                  id={`${listId}-opt-${i}`}
+                  role="option"
+                  aria-selected={selected}
+                >
                   <button
                     type="button"
+                    tabIndex={-1}
                     onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setActive(i)}
                     onClick={() => pick(o)}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${
+                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
+                      highlighted ? "bg-blue-50" : ""
+                    } ${
                       selected ? "font-medium text-[#1E4D96]" : "text-slate-700"
                     }`}
                   >

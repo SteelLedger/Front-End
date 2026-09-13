@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import { X, Trash2, Check } from "lucide-react";
 import InfoTip from "./InfoTip";
-import { joinWithAnd, sentenceCase } from "../utils/text";
+import { joinWithAnd, sentenceCase, decimalInput } from "../utils/text";
 import { gmToKg } from "../utils/units";
 import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
+import { useFocusTrap, useEnterAdvance } from "../utils/keyboard";
 
 /** A computed kg figure, trimmed the same way gmToKgDisplay trims. */
 const kgDisplay = (kg) => Number(kg.toFixed(3)).toLocaleString("en-IN");
@@ -47,6 +48,10 @@ export default function ProductionDrawer({
   onClose,
   onSubmit,
 }) {
+  const panelRef = useRef(null);
+  // Tab stays in the drawer; Enter walks to the next field.
+  useFocusTrap(panelRef, open);
+  const onPanelKeyDown = useEnterAdvance(panelRef);
   const firstRef = useRef(null);
 
   useEffect(() => {
@@ -215,6 +220,9 @@ export default function ProductionDrawer({
     <div
       className={`fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`}
       aria-hidden={!open}
+      /* Closed but still mounted — without this its fields stay in the page's
+         tab order and Tab walks through an invisible form. */
+      inert={!open}
     >
       <div
         onClick={onClose}
@@ -224,6 +232,8 @@ export default function ProductionDrawer({
       />
 
       <div
+        ref={panelRef}
+        onKeyDown={onPanelKeyDown}
         role="dialog"
         aria-modal="true"
         aria-label={mode === "add" ? "Add Product" : "Edit Product"}
@@ -300,7 +310,10 @@ export default function ProductionDrawer({
             >
               <input
                 value={formState.productSize}
-                onChange={(e) => set({ productSize: e.target.value })}
+                inputMode="decimal"
+                onChange={(e) =>
+                  set({ productSize: decimalInput(e.target.value) })
+                }
                 placeholder={maxSize != null ? `Max ${maxSize}` : "e.g. 101"}
                 className={`${FIELD} ${
                   sizeInvalid ||
@@ -400,15 +413,11 @@ export default function ProductionDrawer({
               <Field label="Balance Patta Size">
                 <input
                   value={formState.balancePattaSize}
+                  inputMode="decimal"
                   onChange={(e) =>
-                    set({
-                      balancePattaSize: e.target.value.replace(
-                        /[^a-zA-Z0-9]/g,
-                        "",
-                      ),
-                    })
+                    set({ balancePattaSize: decimalInput(e.target.value) })
                   }
-                  placeholder="e.g. 8"
+                  placeholder="e.g. 8.5"
                   className={`${FIELD} ${
                     balanceSizeNotPositive ||
                     (balanceHalfDone && !balanceSizeEntered)
