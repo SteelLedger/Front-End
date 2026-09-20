@@ -1,9 +1,25 @@
 import { useEffect } from "react";
 import { X, ReceiptText } from "lucide-react";
 import { gmToKgDisplay } from "../utils/units";
-import { lineLabel } from "../utils/purchase";
+import { lineLabel, isCircleLine, itemTypeLabel } from "../utils/purchase";
 
 const dash = (v) => (v && String(v).trim() ? v : "—");
+
+/** Which inventory a line stocked. Circle is the exception, so it's the one
+ *  that gets a colour. */
+function TypeBadge({ line }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        isCircleLine(line)
+          ? "bg-amber-50 text-amber-700"
+          : "bg-slate-100 text-slate-600"
+      }`}
+    >
+      {itemTypeLabel(line.itemType)}
+    </span>
+  );
+}
 
 /**
  * PurchaseBillModal
@@ -84,10 +100,13 @@ export default function PurchaseBillModal({ open, bill, onClose }) {
                         {gmToKgDisplay(l.quantity || 0)} kg
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Size {dash(l.size)} · Point {dash(l.point)} · Grade{" "}
-                      {dash(l.grade)} · {l.bundles || 0}{" "}
-                      {l.bundles === 1 ? "bundle" : "bundles"}
+                    <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-400">
+                      <TypeBadge line={l} />
+                      <span>
+                        Size {dash(l.size)} · Point {dash(l.point)} · Grade{" "}
+                        {dash(l.grade)} · {l.bundles || 0}{" "}
+                        {l.bundles === 1 ? "bundle" : "bundles"}
+                      </span>
                     </p>
                   </div>
                 ))}
@@ -97,9 +116,8 @@ export default function PurchaseBillModal({ open, bill, onClose }) {
               <table className="hidden w-full text-sm sm:table">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-5 py-2.5 font-semibold">
-                      Raw Material Sheet
-                    </th>
+                    <th className="px-5 py-2.5 font-semibold">Item</th>
+                    <th className="px-3 py-2.5 font-semibold">Type</th>
                     <th className="px-3 py-2.5 font-semibold">Size</th>
                     <th className="px-3 py-2.5 font-semibold">Point</th>
                     <th className="px-3 py-2.5 font-semibold">Grade</th>
@@ -116,6 +134,9 @@ export default function PurchaseBillModal({ open, bill, onClose }) {
                     <tr key={i}>
                       <td className="px-5 py-2.5 font-medium text-slate-800">
                         {lineLabel(l)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <TypeBadge line={l} />
                       </td>
                       <td className="px-3 py-2.5 text-slate-600">
                         {dash(l.size)}

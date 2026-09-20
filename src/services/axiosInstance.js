@@ -1,5 +1,6 @@
 import axios from "axios";
 import { clearSession } from "../utils/auth";
+import { getActiveOrgId } from "../utils/organization";
 
 // === Create Axios instance ===
 const axiosInstance = axios.create({
@@ -11,11 +12,41 @@ const axiosInstance = axios.create({
   timeout: 180000,
 });
 
-// Attach the auth token (saved at login) to every request.
+/**
+ * Routes that are NOT scoped to one organization, and so must not carry the
+ * tenant header: signing in, changing your own password, team members
+ * (accounts are account-wide, not per-tenant), the organization endpoints
+ * themselves — which is how the org list can be fetched before one is
+ * picked — plus maintenance and health.
+ */
+const ORG_EXEMPT = [
+  "/auth/",
+  "/users",
+  "/organizations",
+  "/maintenance",
+  "/health",
+];
+
+const isOrgExempt = (url = "") => {
+  // Compare against the path only: a query string can contain anything.
+  const path = url.split("?")[0];
+  return ORG_EXEMPT.some((p) => path === p || path.startsWith(p));
+};
+
+/**
+ * Attach the auth token (saved at login) and the active organization to every
+ * request. Tenant APIs answer 400 without `X-Organization-Id`, so
+ * OrganizationProvider resolves one before any page is allowed to render —
+ * see utils/organization.
+ */
 axiosInstance.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const orgId = getActiveOrgId();
+  if (orgId && !isOrgExempt(config.url)) {
+    config.headers["X-Organization-Id"] = orgId;
   }
   return config;
 });

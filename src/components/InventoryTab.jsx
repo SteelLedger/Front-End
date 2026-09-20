@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import AdjustButton from "./AdjustButton";
 
 const PAGE_SIZE = 10;
 
@@ -60,6 +61,10 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
  * InventoryTab
  * Server-driven inventory list: stats + search + status filter + sortable
  * columns + pagination. Config comes from props (kept module-stable by callers).
+ *
+ * `onView` and `onAdjust` are both optional row actions and share one Actions
+ * column, which only appears when at least one of them is given. Byproducts
+ * have no stock-adjustment endpoint, so that tab passes `onView` alone.
  */
 export default function InventoryTab({
   fetchFn,
@@ -70,6 +75,7 @@ export default function InventoryTab({
   searchPlaceholder = "Search…",
   reloadKey,
   onView,
+  onAdjust,
 }) {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
@@ -235,6 +241,11 @@ export default function InventoryTab({
                       </button>
                     )}
                   </div>
+                  {onAdjust && (
+                    <div className="mt-2 flex justify-end">
+                      <AdjustButton onClick={() => onAdjust(row)} />
+                    </div>
+                  )}
                   {columns.length > 1 && (
                     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
                       {columns.slice(1).map((col) => (
@@ -280,8 +291,8 @@ export default function InventoryTab({
                         )}
                       </th>
                     ))}
-                    {onView && (
-                      <th className="py-3 px-4 font-semibold text-right w-24">
+                    {(onView || onAdjust) && (
+                      <th className="py-3 px-4 font-semibold text-right w-28">
                         Actions
                       </th>
                     )}
@@ -298,18 +309,23 @@ export default function InventoryTab({
                           {col.render(row)}
                         </td>
                       ))}
-                      {onView && (
+                      {(onView || onAdjust) && (
                         <td className="py-3 px-4">
-                          <div className="flex items-center justify-end">
-                            <button
-                              type="button"
-                              onClick={() => onView(row)}
-                              aria-label="View byproducts"
-                              title="View byproducts"
-                              className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
-                            >
-                              <Eye size={15} />
-                            </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {onView && (
+                              <button
+                                type="button"
+                                onClick={() => onView(row)}
+                                aria-label="View byproducts"
+                                title="View byproducts"
+                                className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
+                              >
+                                <Eye size={15} />
+                              </button>
+                            )}
+                            {onAdjust && (
+                              <AdjustButton onClick={() => onAdjust(row)} />
+                            )}
                           </div>
                         </td>
                       )}

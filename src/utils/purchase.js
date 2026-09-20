@@ -1,14 +1,45 @@
 // Purchase helpers, matching the /purchases API contract.
 //
 // A purchase is one BILL: a supplier, an invoice number and a date, with one
-// or more line items under it. Each line is size + point + grade + quantity +
-// bundles, and the backend derives `rawMaterialName` ("10X120P M5") from the
-// first three. Quantities are GRAMS on the wire and kg in the UI; bundles are
-// a plain integer count.
+// or more line items under it. Each line is type + size + point + grade +
+// quantity + bundles, and the backend derives `rawMaterialName` ("10X120P M5")
+// from size/point/grade. Quantities are GRAMS on the wire and kg in the UI;
+// bundles are a plain integer count.
+//
+// `itemType` (required by the API) decides which inventory the line lands in:
+// raw_material adds to raw-material stock, circle adds to PRODUCT stock
+// instead (the backend also echoes the name back as `productName` there).
 
 import { todayISO, isoToDMY, dmyToISO } from "./party";
 import { numericText } from "./text";
 import { kgToGm, gmToKg } from "./units";
+
+/**
+ * Where a line's stock goes. The API's enum, `value` on the wire and `label`
+ * on screen — same shape as members' ROLES.
+ */
+export const ITEM_TYPES = [
+  {
+    value: "raw_material",
+    label: "Raw Material",
+    description: "Adds to raw material stock (patta sheets).",
+  },
+  {
+    value: "circle",
+    label: "Circle",
+    description: "Adds to product stock instead of raw material.",
+  },
+];
+
+/** What a new line starts as, and the fallback for a bill saved before the
+ *  field existed. */
+export const DEFAULT_ITEM_TYPE = "raw_material";
+
+export const itemTypeLabel = (value) =>
+  ITEM_TYPES.find((t) => t.value === value)?.label || "Raw Material";
+
+/** Does this line stock a product rather than a raw-material sheet? */
+export const isCircleLine = (l = {}) => l.itemType === "circle";
 
 // Fields GET /purchases will sort on. The per-line fields (size/point/grade)
 // aren't among them any more — a bill with three lines has no single size.
@@ -22,7 +53,14 @@ export const SORTABLE_FIELDS = [
 
 /** One blank row in the items editor. `quantity` is kg here, grams on save. */
 export function emptyLineItem() {
-  return { size: "", point: "", grade: "", quantity: "", bundles: "" };
+  return {
+    itemType: DEFAULT_ITEM_TYPE,
+    size: "",
+    point: "",
+    grade: "",
+    quantity: "",
+    bundles: "",
+  };
 }
 
 export function emptyPurchaseForm() {
@@ -44,7 +82,12 @@ const text = (v) => String(v ?? "").trim();
 /** Filled in AND a number above zero — how every amount on a line must read. */
 const positive = (v) => text(v) !== "" && Number(v) > 0;
 
-/** Nothing typed in any of the five fields — a leftover blank row. */
+/**
+ * Nothing typed in any of the five DATA fields — a leftover blank row.
+ * `itemType` is deliberately not part of this: it always carries a default, so
+ * counting it would make every row look filled, and the editor would stop
+ * auto-adding rows and stop dropping the trailing blank one on save.
+ */
 export const isBlankLine = (l) =>
   !text(l.size) &&
   !text(l.point) &&
@@ -52,8 +95,15 @@ export const isBlankLine = (l) =>
   !text(l.quantity) &&
   !text(l.bundles);
 
-/** The five fields of a line, in the order the items editor shows them. */
-export const LINE_FIELDS = ["size", "point", "grade", "quantity", "bundles"];
+/** Every required field of a line, in the order the items editor shows them. */
+export const LINE_FIELDS = [
+  "itemType",
+  "size",
+  "point",
+  "grade",
+  "quantity",
+  "bundles",
+];
 
 /**
  * Size, quantity and bundles are amounts: a 0, a negative or a stray letter is
@@ -64,6 +114,7 @@ export const AMOUNT_FIELDS = ["size", "quantity", "bundles"];
 
 /** How each field is named inside a validation message. */
 const FIELD_LABELS = {
+  itemType: "type",
   size: "size",
   point: "point",
   grade: "grade",
@@ -74,14 +125,14 @@ const FIELD_LABELS = {
 export const fieldLabels = (fields = []) =>
   fields.map((f) => FIELD_LABELS[f] ?? f);
 
-/** Which of the five fields this line has left empty, in editor order. */
+/** Which required fields this line has left empty, in editor order. */
 export const missingFields = (l) => LINE_FIELDS.filter((f) => !text(l[f]));
 
 /** Which amounts read as zero, negative or non-numeric, in editor order. */
 export const notPositiveFields = (l) =>
   AMOUNT_FIELDS.filter((f) => !positive(l[f]));
 
-/** Something typed in all five fields, whatever those values say. */
+/** Something in every required field, whatever those values say. */
 export const isFilledLine = (l) => !missingFields(l).length;
 
 export const hasPositiveAmounts = (l) => !notPositiveFields(l).length;
@@ -124,6 +175,9 @@ export function buildPurchasePayload(f) {
     invoiceNumber: f.invoiceNumber.trim(),
     date: isoToDMY(f.date),
     lineItems: filledLines(f.lineItems).map((l) => ({
+      // Required by the API; defaulted so a row that somehow lost it still
+      // saves as raw material rather than 400ing.
+      itemType: l.itemType || DEFAULT_ITEM_TYPE,
       // Tidied so a half-typed "10." goes over the wire as "10".
       size: numericText(l.size),
       point: text(l.point),
@@ -137,12 +191,16 @@ export function buildPurchasePayload(f) {
 /** A bill from the API -> the shape the list renders. Quantities in grams. */
 export function normalizePurchase(raw) {
   const lineItems = (raw.lineItems ?? []).map((l) => ({
+    // Bills saved before itemType existed come back without one.
+    itemType: l.itemType ?? DEFAULT_ITEM_TYPE,
     size: l.size ?? "",
     point: l.point ?? "",
     grade: l.grade ?? "",
     quantity: Number(l.quantity) || 0,
     bundles: Number(l.bundles) || 0,
     rawMaterialName: l.rawMaterialName ?? "",
+    // Only set on circle lines, and the same string as rawMaterialName.
+    productName: l.productName ?? "",
   }));
   const sum = (key) =>
     lineItems.reduce((total, l) => total + (Number(l[key]) || 0), 0);
@@ -172,6 +230,7 @@ export function purchaseToForm(p) {
     date: p.date ? dmyToISO(p.date) : todayISO(),
     lineItems: p.lineItems?.length
       ? p.lineItems.map((l) => ({
+          itemType: l.itemType || DEFAULT_ITEM_TYPE,
           size: l.size ?? "",
           point: l.point ?? "",
           grade: l.grade ?? "",

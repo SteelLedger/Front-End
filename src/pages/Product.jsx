@@ -21,6 +21,10 @@ function emptyByproduct() {
 function emptyProductionForm() {
   return {
     rawMaterialId: "",
+    // Required by the API, and left unset on purpose — a run is genuinely
+    // single, double or triple line, so defaulting would quietly record a
+    // guess. The drawer blocks submit until it's chosen.
+    productionType: "",
     productSize: "",
     howMany: "", // kg -> productQty
     productBundles: "", // a count, not a weight
@@ -65,6 +69,9 @@ function productionToForm(d) {
       : d.rawMaterialId;
   return {
     rawMaterialId: rmId ?? "",
+    // Null on runs recorded before the field existed; the drawer then asks for
+    // one, which backfills it on save.
+    productionType: d.productionType ?? "",
     productSize: d.productSize ?? "",
     howMany: d.productQty != null ? gmToKg(d.productQty) : "",
     productBundles: d.productBundles != null ? String(d.productBundles) : "",
@@ -114,6 +121,7 @@ function buildProductionPayload(form, { isEdit = false } = {}) {
 
   return {
     rawMaterialId: form.rawMaterialId,
+    productionType: form.productionType,
     ...(hasProduct
       ? { productSize: size, productQty: kgToGm(form.howMany) }
       : {}),

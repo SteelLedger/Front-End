@@ -7,7 +7,6 @@ import {
   Share2,
   MoreVertical,
   FileSpreadsheet,
-  BarChart3,
   Pencil,
   Trash2,
   Inbox,

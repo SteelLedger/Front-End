@@ -4,6 +4,7 @@ import InfoTip from "./InfoTip";
 import { joinWithAnd, sentenceCase, decimalInput } from "../utils/text";
 import { gmToKg } from "../utils/units";
 import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
+import { PRODUCTION_TYPES } from "../utils/production";
 import { useFocusTrap, useEnterAdvance } from "../utils/keyboard";
 
 /** A computed kg figure, trimmed the same way gmToKgDisplay trims. */
@@ -185,6 +186,7 @@ export default function ProductionDrawer({
 
   const canSubmit =
     !!formState.rawMaterialId &&
+    !!formState.productionType &&
     !!formState.productionDate &&
     !sizeInvalid &&
     !amountsNotPositive &&
@@ -195,15 +197,17 @@ export default function ProductionDrawer({
   // Why the submit button is off — a silently disabled button is a dead end.
   const blockedReason = !formState.rawMaterialId
     ? "Select a sheet to cut from."
-    : amountsNotPositive
-      ? `${sentenceCase(joinWithAnd(notPositiveNames))} must be greater than 0.`
-      : productHalfDone
-        ? "Product size and quantity go together — fill both, or clear both to record byproducts only."
-        : balanceHalfDone
-          ? "Balance patta needs both a size and a quantity."
-          : !hasProduct && !hasByproduct
-            ? "Add a product, or at least one byproduct."
-            : "";
+    : !formState.productionType
+      ? "Choose the production type for this run."
+      : amountsNotPositive
+        ? `${sentenceCase(joinWithAnd(notPositiveNames))} must be greater than 0.`
+        : productHalfDone
+          ? "Product size and quantity go together — fill both, or clear both to record byproducts only."
+          : balanceHalfDone
+            ? "Balance patta needs both a size and a quantity."
+            : !hasProduct && !hasByproduct
+              ? "Add a product, or at least one byproduct."
+              : "";
 
   // Shown in the footer, but only once a typed value is actually wrong — an
   // untouched form shouldn't open scolding the user for the fields it needs.
@@ -301,6 +305,30 @@ export default function ProductionDrawer({
               </div>
             )}
           </div>
+
+          {/* How the run was cut — recorded on the production only */}
+          <Field
+            label="Production Type"
+            required
+            info="How many lines this run was cut on. Recorded on the production record; it doesn't change any stock figure."
+          >
+            <select
+              value={formState.productionType}
+              onChange={(e) => set({ productionType: e.target.value })}
+              className={`${FIELD} ${
+                formState.productionType
+                  ? "text-slate-700 border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+                  : "text-slate-400 border-slate-300 focus:border-[#1E4D96] focus:ring-[#1E4D96]/30"
+              }`}
+            >
+              <option value="">-- Select Production Type --</option>
+              {PRODUCTION_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </Field>
 
           {/* Product size */}
           <div>

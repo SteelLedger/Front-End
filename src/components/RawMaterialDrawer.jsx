@@ -4,6 +4,8 @@ import SearchableSelect from "./SearchableSelect";
 import InfoTip from "./InfoTip";
 import { gmToKgDisplay } from "../utils/units";
 import {
+  ITEM_TYPES,
+  isCircleLine,
   emptyLineItem,
   isBlankLine,
   missingFields,
@@ -42,14 +44,19 @@ const LINE_INPUT =
   "w-full rounded-md border px-2.5 py-2 text-sm text-slate-700 placeholder:text-slate-300 " +
   "focus:outline-none focus:ring-1";
 
-const LINE_GRID = "sm:grid-cols-[1fr_1fr_1fr_1.1fr_1fr_auto]";
+// Type leads and takes the widest share — "Raw Material" has to fit the select
+// without truncating. The panel widens to max-w-3xl to pay for the extra column.
+const LINE_GRID = "sm:grid-cols-[1.5fr_1fr_1fr_1fr_1.1fr_1fr_auto]";
 
 /**
  * RawMaterialDrawer
- * Right-side slide-in panel for creating / editing a purchase bill (Patta —
- * raw material). One supplier, invoice number and date at the top, then any
- * number of item lines beneath: size, point, grade, quantity and bundles.
- * That mirrors the API, where a bill carries `lineItems[]`.
+ * Right-side slide-in panel for creating / editing a purchase bill. One
+ * supplier, invoice number and date at the top, then any number of item lines
+ * beneath: type, size, point, grade, quantity and bundles. That mirrors the
+ * API, where a bill carries `lineItems[]`.
+ *
+ * A line's type picks the inventory it lands in — Raw Material (patta sheets)
+ * or Circle, which stocks a product instead.
  *
  * Form state lives in the parent (`formState` / `setFormState`).
  */
@@ -297,7 +304,7 @@ export default function RawMaterialDrawer({
         role="dialog"
         aria-modal="true"
         aria-label={mode === "add" ? "Add Purchase" : "Edit Purchase"}
-        className={`absolute right-0 top-0 flex h-full w-full max-w-2xl flex-col bg-white shadow-xl transition-transform duration-300 ease-out ${
+        className={`absolute right-0 top-0 flex h-full w-full max-w-3xl flex-col bg-white shadow-xl transition-transform duration-300 ease-out ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -307,7 +314,9 @@ export default function RawMaterialDrawer({
             <h3 className="text-lg font-bold text-slate-900">
               {mode === "add" ? "Add Purchase" : "Edit Purchase"}
             </h3>
-            <p className="text-xs text-slate-400">Patta — raw material stock</p>
+            <p className="text-xs text-slate-400">
+              Patta — raw material &amp; circle stock
+            </p>
           </div>
           <button
             type="button"
@@ -389,7 +398,7 @@ export default function RawMaterialDrawer({
             <div className="mb-3 flex items-center justify-between gap-3">
               <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
                 Items
-                <InfoTip text="One bill can cover several sheet specs. Each line has its own size, point, grade, quantity and bundle count. Quantity is in kg." />
+                <InfoTip text="One bill can cover several specs. Each line has its own type, size, point, grade, quantity and bundle count. Type decides where the stock lands: Raw Material adds to raw material stock, Circle adds to product stock. Quantity is in kg." />
               </h4>
               <button
                 type="button"
@@ -402,7 +411,7 @@ export default function RawMaterialDrawer({
 
             {/* Column headers on wide screens; each field is labelled inline below */}
             <div className={`mb-1.5 hidden gap-2 px-1 sm:grid ${LINE_GRID}`}>
-              {["Size", "Point", "Grade", "Quantity (kg)", "Bundles"].map(
+              {["Type", "Size", "Point", "Grade", "Quantity (kg)", "Bundles"].map(
                 (h) => (
                   <span
                     key={h}
@@ -431,6 +440,25 @@ export default function RawMaterialDrawer({
                     <div
                       className={`grid grid-cols-2 gap-2 sm:items-center ${LINE_GRID}`}
                     >
+                      <label className="col-span-2 block sm:col-span-1 sm:contents">
+                        <span className="mb-1 block text-[11px] font-semibold text-slate-500 sm:hidden">
+                          Type *
+                        </span>
+                        <select
+                          value={line.itemType}
+                          onChange={(e) =>
+                            updateLine(i, "itemType", e.target.value)
+                          }
+                          aria-label={`Item ${i + 1} type`}
+                          className={`${lineClass(i, "itemType")} bg-white`}
+                        >
+                          {ITEM_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <label className="block sm:contents">
                         <span className="mb-1 block text-[11px] font-semibold text-slate-500 sm:hidden">
                           Size *
@@ -514,10 +542,13 @@ export default function RawMaterialDrawer({
                         </button>
                       </div>
                     </div>
-                    {/* Echo the name the backend will generate for this line. */}
+                    {/*
+                      Echo the name the backend will generate, and say which
+                      inventory it lands in — the same spec can be either.
+                    */}
                     {label && (
                       <p className="mt-1 px-1 text-[11px] text-slate-400">
-                        Raw material:{" "}
+                        {isCircleLine(line) ? "Product" : "Raw material"}:{" "}
                         <span className="font-medium text-slate-500">
                           {label}
                         </span>

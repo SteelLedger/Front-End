@@ -49,6 +49,10 @@ function normalizeProduction(raw) {
  *
  * Spacing is the caller's: the table sets it beside the product name, the
  * card sets it underneath.
+ *
+ * The vertical padding grows on phones so the tap target clears 30px, with a
+ * matching negative margin so the row height doesn't change — the same trick
+ * the icon buttons use.
  */
 function ByproductsToggle({ count, onClick, className = "" }) {
   if (count === 0) {
@@ -63,7 +67,7 @@ function ByproductsToggle({ count, onClick, className = "" }) {
       type="button"
       onClick={onClick}
       title="View byproducts"
-      className={`inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:bg-blue-50 hover:text-[#1E4D96] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${className}`}
+      className={`inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-2 -my-1.5 sm:my-0 sm:py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:bg-blue-50 hover:text-[#1E4D96] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${className}`}
     >
       <Boxes size={12} />
       {count == null

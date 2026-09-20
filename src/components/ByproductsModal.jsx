@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
 import { gmToKgDisplay } from "../utils/units";
 
@@ -5,13 +6,40 @@ import { gmToKgDisplay } from "../utils/units";
  * ByproductsModal
  * Small centered modal listing byproducts (name + qty in kg).
  * `state` = { loading, productName, byProducts } | null.
+ *
+ * The wrapper mounts the dialog only while there's state, so the Escape
+ * listener and the scroll lock below live for exactly as long as it's open —
+ * the same shape every other overlay in here uses.
  */
 export default function ByproductsModal({ state, onClose }) {
   if (!state) return null;
+  return <ByproductsDialog state={state} onClose={onClose} />;
+}
+
+function ByproductsDialog({ state, onClose }) {
+  // Close on Escape, and freeze the page behind the dialog.
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Byproducts"
+        className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+      >
         <div className="mb-1 flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-900">Byproducts</h3>
           <button

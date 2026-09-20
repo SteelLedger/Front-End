@@ -2,11 +2,8 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { toast } from "react-toastify";
 import {
   Search,
-  Printer,
   FileSpreadsheet,
   Pencil,
-  Phone,
-  Clock,
   X,
   ArrowUpRight,
   ArrowDownLeft,
@@ -47,6 +44,7 @@ import {
   updateParty,
   DeleteParty,
   GetTransactions,
+  importParties,
 } from "../services/apiServices";
 
 const PAGE_SIZE = 10;
@@ -634,10 +632,6 @@ function Parties() {
     }
   }
 
-  function handlePrint() {
-    window.print();
-  }
-
   function handleExportCSV() {
     if (!selectedParty) return;
     const header = ["Type", "Number", "Date", "Total", "Balance"];
@@ -918,18 +912,6 @@ function Parties() {
                     >
                       <Info size={16} />
                     </IconButton>
-                    {/* <IconButton
-                      title="WhatsApp"
-                      colorClass="bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-                    >
-                      <Phone size={16} />
-                    </IconButton> */}
-                    {/* <IconButton
-                      title="Set reminder"
-                      colorClass="bg-orange-50 text-orange-600 hover:bg-orange-100"
-                    >
-                      <Clock size={16} />
-                    </IconButton> */}
                   </div>
                 </div>
 
@@ -962,9 +944,6 @@ function Parties() {
                       >
                         <Search size={16} />
                       </HeaderIconButton>
-                      {/* <HeaderIconButton title="Print" onClick={handlePrint}>
-                        <Printer size={16} />
-                      </HeaderIconButton> */}
                       <HeaderIconButton
                         title="Export CSV"
                         onClick={handleExportCSV}
@@ -1187,6 +1166,15 @@ function Parties() {
 
       {importOpen && (
         <BulkImportModal
+          title="Bulk Import Parties"
+          subtitle="Upload a CSV to add many parties at once"
+          noun="parties"
+          importFn={importParties}
+          sampleUrl="/parties-import-example.csv"
+          rules={[
+            "Duplicate name + partyType (case-insensitive) rows are skipped.",
+            "Leave optional cells empty; don't omit columns from the header if you use the full template.",
+          ]}
           onClose={() => {
             setImportOpen(false);
             // The job runs off a queue, so rows rarely land before this — but

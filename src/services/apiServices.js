@@ -29,6 +29,48 @@ export const resetPassword = (data) => {
   return POST(`/auth/reset-password`, data);
 };
 
+/* ------------------------------- Maintenance ------------------------------- */
+
+/**
+ * Whether the whole system is down for maintenance: `{ isEnabled, message,
+ * enabledAt, updatedBy }`.
+ *
+ * The only PUBLIC endpoint the client calls — it declares no security at all,
+ * takes no organization header, and stays reachable while maintenance is on
+ * (which is the point: everything else is expected to refuse). Read-only here;
+ * turning maintenance on/off is PUT /maintenance, which this app doesn't do.
+ */
+export const GetMaintenanceStatus = () => {
+  return GET(`/maintenance/status`);
+};
+
+/* ------------------------------ Organizations ------------------------------ */
+
+/**
+ * The tenants this account can work in, for the org switcher. One of the few
+ * authenticated endpoints that does NOT take `X-Organization-Id` — it is what
+ * decides which organization the rest of the app is scoped to.
+ *
+ * The switcher wants every organization in one go rather than a page at a
+ * time, so callers pass the API's maximum limit (100).
+ */
+export const GetOrganizations = ({
+  search,
+  sortBy,
+  sortOrder,
+  page,
+  limit,
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (search) qs.append("search", search);
+  if (sortBy) qs.append("sortBy", sortBy);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/organizations${q ? `?${q}` : ""}`);
+};
+
 /* ------------------------------- Action logs ------------------------------- */
 
 /**
@@ -293,6 +335,46 @@ export const GetRawMaterialInboundHistory = (
   return GET(`/raw-materials/${id}/inbound-history${q ? `?${q}` : ""}`);
 };
 
+/**
+ * Inbound stock history for one PRODUCT inventory row, from the durable
+ * product_stock_movements collection — the product-side twin of
+ * GetRawMaterialInboundHistory. Replaces reading runs off GET /productions,
+ * which only ever knew about productions.
+ *
+ * Entries carry `entryType: "purchase" | "production" | "stock_adjustment"`:
+ * a circle bought on a purchase bill, a production run, or a manual
+ * add/reduce (which also carries `adjustmentDirection`). The response bundles
+ * the product inventory row and a summary alongside the entries, so the page
+ * doesn't have to hunt for the row through /products.
+ */
+export const GetProductInboundHistory = (
+  id,
+  { fromDate, toDate, sortOrder, page, limit } = {},
+) => {
+  const qs = new URLSearchParams();
+  // Inclusive DD/MM/YYYY range over the event date.
+  if (fromDate) qs.append("fromDate", fromDate);
+  if (toDate) qs.append("toDate", toDate);
+  if (sortOrder) qs.append("sortOrder", sortOrder);
+  if (page) qs.append("page", page);
+  if (limit) qs.append("limit", limit);
+  const q = qs.toString();
+  return GET(`/products/${id}/inbound-history${q ? `?${q}` : ""}`);
+};
+
+/**
+ * Manually add to or reduce a raw material's on-hand quantity. Lands as a
+ * `stock_adjustment` row in stock_movements, so it shows up in the inbound
+ * history alongside purchases and balance patta.
+ *
+ * Body: { direction: "add"|"reduce", date: "DD/MM/YYYY", quantity, details }.
+ * `quantity` is GRAMS and always positive — `direction` carries the sign.
+ * A reduce larger than current stock is refused with a 400 worth surfacing.
+ */
+export const adjustRawMaterialStock = (id, data) => {
+  return POST(`/raw-materials/${id}/stock-adjustments`, data);
+};
+
 /* ------------------------------- Productions ------------------------------- */
 
 export const GetProductions = ({
@@ -334,6 +416,17 @@ export const updateProduction = (id, data) => {
 
 export const DeleteProduction = (id) => {
   return DELETE(`/productions/${id}`);
+};
+
+/**
+ * The product-side twin of adjustRawMaterialStock — same body, same rules,
+ * landing as a `stock_adjustment` row in product_stock_movements.
+ *
+ * There is no by-product equivalent, so the Byproducts tab has no adjust
+ * action.
+ */
+export const adjustProductStock = (id, data) => {
+  return POST(`/products/${id}/stock-adjustments`, data);
 };
 
 /* ---------------------------------- Sales ---------------------------------- */
@@ -460,6 +553,24 @@ export const GetProducts = ({
   if (limit) qs.append("limit", limit);
   const q = qs.toString();
   return GET(`/products${q ? `?${q}` : ""}`);
+};
+
+/**
+ * Bulk-import product inventory from a CSV — the product-side twin of
+ * importParties, and asynchronous in the same way: 202 with a job, rows
+ * processed off a queue, summary emailed to the caller.
+ *
+ * Columns are productName, productSize, rawMaterialName, totalQty (kg).
+ * `totalQty` is in KILOGRAMS here (the backend converts to grams), which is
+ * the opposite of every other quantity the client sends. Duplicate
+ * productName rows are skipped; 5000 rows max. A row with a quantity also
+ * creates a stock_adjustment inbound movement, so imported stock shows up in
+ * the product's inbound history.
+ */
+export const importProductInventory = (file) => {
+  const body = new FormData();
+  body.append("file", file);
+  return UPLOAD(`/products/import`, body);
 };
 
 // By-product inventory (grouped by slug).
