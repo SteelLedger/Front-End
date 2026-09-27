@@ -18,6 +18,9 @@ import {
 function emptyByproduct() {
   return { name: "", customName: "", qty: "" };
 }
+function emptyBalancePatta() {
+  return { size: "", qty: "" }; // qty in kg
+}
 function emptyProductionForm() {
   return {
     rawMaterialId: "",
@@ -30,9 +33,9 @@ function emptyProductionForm() {
     productBundles: "", // a count, not a weight
     wasteQty: "", // kg -> wasteQty (scrap; deducted and gone)
     // Balance patta returns usable material to raw-material stock at a new
-    // size, so it carries its own size and is NOT waste.
-    balancePattaSize: "",
-    balancePattaQty: "", // kg
+    // size, so it carries its own size and is NOT waste. A run can leave
+    // several offcuts, each at its own size.
+    balancePattas: [emptyBalancePatta()],
     productionDate: todayISO(),
     byproducts: [emptyByproduct()],
   };
@@ -49,6 +52,24 @@ function isoToDateInput(iso) {
   if (Number.isNaN(dt.getTime())) return todayISO();
   const pad = (n) => String(n).padStart(2, "0");
   return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
+}
+
+function balancePattaToForm(bp) {
+  return {
+    size: bp.size ?? "",
+    qty: bp.qty != null ? gmToKg(bp.qty) : "",
+  };
+}
+
+/**
+ * A saved run's balance pattas. Runs recorded before the list existed carry a
+ * single balancePattaSize/balancePattaQty pair instead — read as one row.
+ */
+function balancePattasOf(d) {
+  if (Array.isArray(d.balancePattas)) return d.balancePattas;
+  return d.balancePattaSize && d.balancePattaQty
+    ? [{ size: d.balancePattaSize, qty: d.balancePattaQty }]
+    : [];
 }
 
 function byproductToForm(bp) {
@@ -76,8 +97,9 @@ function productionToForm(d) {
     howMany: d.productQty != null ? gmToKg(d.productQty) : "",
     productBundles: d.productBundles != null ? String(d.productBundles) : "",
     wasteQty: d.wasteQty != null ? gmToKg(d.wasteQty) : "",
-    balancePattaSize: d.balancePattaSize ?? "",
-    balancePattaQty: d.balancePattaQty != null ? gmToKg(d.balancePattaQty) : "",
+    balancePattas: balancePattasOf(d).length
+      ? balancePattasOf(d).map(balancePattaToForm)
+      : [emptyBalancePatta()],
     productionDate: d.productionDate
       ? isoToDateInput(d.productionDate)
       : todayISO(),
@@ -91,13 +113,11 @@ function productionToForm(d) {
 /**
  * Drawer form -> POST /productions or PUT /productions/:id body.
  *
- * `isEdit` decides what a cleared optional pair means. On a create there is
- * nothing to clear, so an empty pair is simply left out. On an edit, leaving
- * the keys out reads as "don't touch these" and the balance-patta row the run
- * created would outlive a deliberate deletion — so a cleared pair is sent as
- * an explicit null instead.
+ * `balancePattas` is always sent, even empty: on an edit, leaving it out would
+ * read as "don't touch these" and a deliberately removed offcut would outlive
+ * its deletion.
  */
-function buildProductionPayload(form, { isEdit = false } = {}) {
+function buildProductionPayload(form) {
   const byProducts = (form.byproducts || [])
     .map((b) => ({
       ...(b._id ? { _id: b._id } : {}),
@@ -113,11 +133,17 @@ function buildProductionPayload(form, { isEdit = false } = {}) {
   const size = numericText(form.productSize);
   const hasProduct = Number(size) > 0 && Number(form.howMany) > 0;
 
-  // Balance patta is its own optional pair, and creates/updates a raw-material
-  // row from this size plus the source sheet's point and grade.
-  const balanceSize = numericText(form.balancePattaSize);
-  const hasBalancePatta =
-    Number(balanceSize) > 0 && Number(form.balancePattaQty) > 0;
+  // Each balance patta creates/updates a raw-material row from its size plus
+  // the source sheet's point and grade. Half-filled rows never get this far —
+  // the drawer blocks submit on them — so only blank rows are dropped here.
+  // Just { size, qty }: unlike byproducts, PUT replaces the whole list, so
+  // there are no row ids to sync against.
+  const balancePattas = (form.balancePattas || [])
+    .map((b) => ({
+      size: numericText(b.size),
+      qty: kgToGm(b.qty),
+    }))
+    .filter((b) => Number(b.size) > 0 && b.qty > 0);
 
   return {
     rawMaterialId: form.rawMaterialId,
@@ -128,14 +154,7 @@ function buildProductionPayload(form, { isEdit = false } = {}) {
     ...(Number(form.productBundles) > 0
       ? { productBundles: Number(form.productBundles) }
       : {}),
-    ...(hasBalancePatta
-      ? {
-          balancePattaSize: balanceSize,
-          balancePattaQty: kgToGm(form.balancePattaQty),
-        }
-      : isEdit
-        ? { balancePattaSize: null, balancePattaQty: null }
-        : {}),
+    balancePattas,
     wasteQty: kgToGm(form.wasteQty),
     productionDate: dateToISO(form.productionDate),
     byProducts,
@@ -183,7 +202,7 @@ function consumedGm(d) {
   return (
     (Number(d.productQty) || 0) +
     byProducts.reduce((sum, b) => sum + (Number(b.qty) || 0), 0) +
-    (Number(d.balancePattaQty) || 0) +
+    balancePattasOf(d).reduce((sum, b) => sum + (Number(b.qty) || 0), 0) +
     (Number(d.wasteQty) || 0)
   );
 }
@@ -289,7 +308,7 @@ export default function Product() {
   async function handleSave() {
     setSaving(true);
     try {
-      const payload = buildProductionPayload(form, { isEdit: mode === "edit" });
+      const payload = buildProductionPayload(form);
       if (mode === "add") {
         await createProduction(payload);
         toast.success("Product added");

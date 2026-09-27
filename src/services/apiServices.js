@@ -380,6 +380,7 @@ export const adjustRawMaterialStock = (id, data) => {
 export const GetProductions = ({
   search,
   productId,
+  productionType,
   fromDate,
   toDate,
   sortBy,
@@ -391,6 +392,8 @@ export const GetProductions = ({
   if (search) qs.append("search", search);
   // Narrows the list to the runs that made one product inventory row.
   if (productId) qs.append("productId", productId);
+  // single_line | double_line | triple_line.
+  if (productionType) qs.append("productionType", productionType);
   // Inclusive DD/MM/YYYY range over the production date.
   if (fromDate) qs.append("fromDate", fromDate);
   if (toDate) qs.append("toDate", toDate);

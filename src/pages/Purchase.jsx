@@ -20,7 +20,7 @@ import { usePageHeader } from "../context/pageHeader";
 import { defaultDateRange } from "../utils/dateRange";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import ConfirmDialog from "../components/ConfirmDialog";
-import PurchaseBillModal from "../components/PurchaseBillModal";
+import PurchaseBillModal, { TypeBadge } from "../components/PurchaseBillModal";
 import { emptyPartyForm, buildPartyPayload } from "../utils/party";
 import { gmToKgDisplay } from "../utils/units";
 import {
@@ -69,6 +69,20 @@ function PurchaseLines({ lines = [], onOpen }) {
           +{rest.length} more
         </button>
       )}
+    </div>
+  );
+}
+
+/** One badge per distinct type on the bill — lines can mix Raw Material and
+ *  Circle, but most bills are a single type. */
+function PurchaseTypes({ lines = [] }) {
+  const types = [...new Set(lines.map((l) => l.itemType))];
+  if (!types.length) return <span className="text-slate-400">—</span>;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {types.map((t) => (
+        <TypeBadge key={t} line={{ itemType: t }} />
+      ))}
     </div>
   );
 }
@@ -502,11 +516,12 @@ export default function Purchase() {
                         </button>
                       </div>
                     </div>
-                    <div className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
                       <PurchaseLines
                         lines={p.lineItems}
                         onOpen={() => setOpenBill(p)}
                       />
+                      <PurchaseTypes lines={p.lineItems} />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                       <span>
@@ -537,6 +552,7 @@ export default function Purchase() {
                       <th className="py-3 px-4 font-semibold">
                         Raw Material Sheet
                       </th>
+                      <th className="py-3 px-4 font-semibold">Type</th>
 
                       <SortHeader
                         label="Total Quantity"
@@ -576,6 +592,9 @@ export default function Purchase() {
                             lines={p.lineItems}
                             onOpen={() => setOpenBill(p)}
                           />
+                        </td>
+                        <td className="py-3 px-4">
+                          <PurchaseTypes lines={p.lineItems} />
                         </td>
 
                         <td className="py-3 px-4 text-right font-medium text-slate-800 whitespace-nowrap">

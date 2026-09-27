@@ -7,7 +7,7 @@ const dash = (v) => (v && String(v).trim() ? v : "—");
 
 /** Which inventory a line stocked. Circle is the exception, so it's the one
  *  that gets a colour. */
-function TypeBadge({ line }) {
+export function TypeBadge({ line }) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${

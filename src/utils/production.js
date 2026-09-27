@@ -13,6 +13,7 @@ export const PRODUCTION_TYPES = [
   { value: "single_line", label: "Single Line" },
   { value: "double_line", label: "Double Line" },
   { value: "triple_line", label: "Triple Line" },
+  { value: "out", label: "Out" },
 ];
 
 export const productionTypeLabel = (value) =>
