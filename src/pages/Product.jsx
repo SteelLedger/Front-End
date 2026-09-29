@@ -7,6 +7,12 @@ import { kgToGm, gmToKg } from "../utils/units";
 import { numericText } from "../utils/text";
 import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
 import {
+  emptyProductionEntry,
+  emptyBalancePatta,
+  emptyByproduct,
+  isBlankEntry,
+} from "../utils/production";
+import {
   GetRawMaterials,
   createProduction,
   updateProduction,
@@ -15,29 +21,15 @@ import {
 
 /* ------------------------------- form helpers ------------------------------ */
 
-function emptyByproduct() {
-  return { name: "", customName: "", qty: "" };
-}
-function emptyBalancePatta() {
-  return { size: "", qty: "" }; // qty in kg
-}
+/**
+ * The drawer form: one entry per product, each a complete production with its
+ * own sheet, type and date, saved as its own record.
+ */
 function emptyProductionForm() {
   return {
-    rawMaterialId: "",
-    // Required by the API, and left unset on purpose — a run is genuinely
-    // single, double or triple line, so defaulting would quietly record a
-    // guess. The drawer blocks submit until it's chosen.
-    productionType: "",
-    productSize: "",
-    howMany: "", // kg -> productQty
-    productBundles: "", // a count, not a weight
-    wasteQty: "", // kg -> wasteQty (scrap; deducted and gone)
-    // Balance patta returns usable material to raw-material stock at a new
-    // size, so it carries its own size and is NOT waste. A run can leave
-    // several offcuts, each at its own size.
-    balancePattas: [emptyBalancePatta()],
-    productionDate: todayISO(),
-    byproducts: [emptyByproduct()],
+    // The first opens expanded so its balance patta / byproduct fields are in
+    // view; cards added after it start collapsed to keep the list scannable.
+    entries: [emptyProductionEntry({ expanded: true })],
   };
 }
 
@@ -82,43 +74,54 @@ function byproductToForm(bp) {
   };
 }
 
-// Map a production record (GET /productions/:id) back into the drawer form.
+/**
+ * Map a production record (GET /productions/:id) back into the drawer form.
+ * PUT still updates one record at a time, so an edit is always one entry.
+ */
 function productionToForm(d) {
   const rmId =
     typeof d.rawMaterialId === "object"
       ? d.rawMaterialId?._id
       : d.rawMaterialId;
+  const pattas = balancePattasOf(d);
   return {
-    rawMaterialId: rmId ?? "",
-    // Null on runs recorded before the field existed; the drawer then asks for
-    // one, which backfills it on save.
-    productionType: d.productionType ?? "",
-    productSize: d.productSize ?? "",
-    howMany: d.productQty != null ? gmToKg(d.productQty) : "",
-    productBundles: d.productBundles != null ? String(d.productBundles) : "",
-    wasteQty: d.wasteQty != null ? gmToKg(d.wasteQty) : "",
-    balancePattas: balancePattasOf(d).length
-      ? balancePattasOf(d).map(balancePattaToForm)
-      : [emptyBalancePatta()],
-    productionDate: d.productionDate
-      ? isoToDateInput(d.productionDate)
-      : todayISO(),
-    byproducts:
-      Array.isArray(d.byProducts) && d.byProducts.length
-        ? d.byProducts.map(byproductToForm)
-        : [emptyByproduct()],
+    entries: [
+      emptyProductionEntry({
+        rawMaterialId: rmId ?? "",
+        // Null on runs recorded before the field existed; the drawer then asks
+        // for one, which backfills it on save.
+        productionType: d.productionType ?? "",
+        productionDate: d.productionDate
+          ? isoToDateInput(d.productionDate)
+          : todayISO(),
+        productSize: d.productSize ?? "",
+        howMany: d.productQty != null ? gmToKg(d.productQty) : "",
+        productBundles:
+          d.productBundles != null ? String(d.productBundles) : "",
+        wasteQty: d.wasteQty != null ? gmToKg(d.wasteQty) : "",
+        balancePattas: pattas.length
+          ? pattas.map(balancePattaToForm)
+          : [emptyBalancePatta()],
+        byproducts:
+          Array.isArray(d.byProducts) && d.byProducts.length
+            ? d.byProducts.map(byproductToForm)
+            : [emptyByproduct()],
+        expanded: true,
+      }),
+    ],
   };
 }
 
 /**
- * Drawer form -> POST /productions or PUT /productions/:id body.
+ * One drawer entry -> a single production body (one item of POST's
+ * `productions`, or PUT's body).
  *
  * `balancePattas` is always sent, even empty: on an edit, leaving it out would
  * read as "don't touch these" and a deliberately removed offcut would outlive
  * its deletion.
  */
-function buildProductionPayload(form) {
-  const byProducts = (form.byproducts || [])
+function buildEntryPayload(entry) {
+  const byProducts = (entry.byproducts || [])
     .map((b) => ({
       ...(b._id ? { _id: b._id } : {}),
       byProductName: b.name === "Other" ? (b.customName || "").trim() : b.name,
@@ -130,15 +133,15 @@ function buildProductionPayload(form) {
   // run rather than sending "" and 0, which would read as "size set, quantity
   // missing" to the API. productBundles is independent: the backend stores it on
   // the production record only and no longer requires it alongside the pair.
-  const size = numericText(form.productSize);
-  const hasProduct = Number(size) > 0 && Number(form.howMany) > 0;
+  const size = numericText(entry.productSize);
+  const hasProduct = Number(size) > 0 && Number(entry.howMany) > 0;
 
   // Each balance patta creates/updates a raw-material row from its size plus
   // the source sheet's point and grade. Half-filled rows never get this far —
   // the drawer blocks submit on them — so only blank rows are dropped here.
   // Just { size, qty }: unlike byproducts, PUT replaces the whole list, so
   // there are no row ids to sync against.
-  const balancePattas = (form.balancePattas || [])
+  const balancePattas = (entry.balancePattas || [])
     .map((b) => ({
       size: numericText(b.size),
       qty: kgToGm(b.qty),
@@ -146,18 +149,31 @@ function buildProductionPayload(form) {
     .filter((b) => Number(b.size) > 0 && b.qty > 0);
 
   return {
-    rawMaterialId: form.rawMaterialId,
-    productionType: form.productionType,
+    rawMaterialId: entry.rawMaterialId,
+    productionType: entry.productionType,
     ...(hasProduct
-      ? { productSize: size, productQty: kgToGm(form.howMany) }
+      ? { productSize: size, productQty: kgToGm(entry.howMany) }
       : {}),
-    ...(Number(form.productBundles) > 0
-      ? { productBundles: Number(form.productBundles) }
+    ...(Number(entry.productBundles) > 0
+      ? { productBundles: Number(entry.productBundles) }
       : {}),
     balancePattas,
-    wasteQty: kgToGm(form.wasteQty),
-    productionDate: dateToISO(form.productionDate),
+    wasteQty: kgToGm(entry.wasteQty),
+    productionDate: dateToISO(entry.productionDate),
     byProducts,
+  };
+}
+
+/**
+ * Drawer form -> POST /productions body: every filled entry becomes its own
+ * record. Cards added and never touched are dropped; the drawer blocks submit
+ * when that would leave nothing to save.
+ */
+function buildCreatePayload(form) {
+  return {
+    productions: form.entries
+      .filter((e) => !isBlankEntry(e))
+      .map(buildEntryPayload),
   };
 }
 
@@ -308,12 +324,13 @@ export default function Product() {
   async function handleSave() {
     setSaving(true);
     try {
-      const payload = buildProductionPayload(form);
       if (mode === "add") {
+        const payload = buildCreatePayload(form);
         await createProduction(payload);
-        toast.success("Product added");
+        const n = payload.productions.length;
+        toast.success(n > 1 ? `${n} products added` : "Product added");
       } else {
-        await updateProduction(editingId, payload);
+        await updateProduction(editingId, buildEntryPayload(form.entries[0]));
         toast.success("Production updated");
       }
       setDrawerOpen(false);
