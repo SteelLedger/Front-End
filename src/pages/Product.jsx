@@ -192,9 +192,9 @@ function toSheet(s) {
 }
 
 /**
- * The sheet a saved run was cut from. The drawer only offers in-stock sheets,
- * so a run whose source has since dropped to zero would open with an empty
- * Select Sheet — this puts its own sheet back on the list for that edit.
+ * The sheet a saved run was cut from. If it isn't in the loaded list (past the
+ * page cap, say) the edit would open with an empty Select Sheet — this puts
+ * its own sheet back on the list for that edit.
  */
 function sheetFromProduction(d) {
   const rm = typeof d.rawMaterialId === "object" ? d.rawMaterialId : null;
@@ -227,9 +227,9 @@ function consumedGm(d) {
 
 export default function Product() {
   const [sheets, setSheets] = useState([]);
-  // The sheet an edited run was cut from, when it has since gone to zero and
-  // so is missing from the in-stock list. Held apart from `sheets` so that a
-  // refresh can't drop it and so it never leaks into the next Add.
+  // The sheet an edited run was cut from, when it's missing from the loaded
+  // list. Held apart from `sheets` so that a refresh can't drop it and so it
+  // never leaks into the next Add.
   const [editSheet, setEditSheet] = useState(null);
   // { sheetId, gm } — what the run being edited already took out of its sheet.
   const [sheetCredit, setSheetCredit] = useState(null);
@@ -241,8 +241,10 @@ export default function Product() {
   const [reloadKey, setReloadKey] = useState(0);
 
   /**
-   * The sheets the drawer can cut from. Only in-stock rows: a sheet at zero has
-   * nothing left to cut, so offering it only invites a failed save.
+   * The sheets the drawer can cut from — every sheet, out-of-stock ones
+   * included. The backend lets raw-material stock go negative, so a sheet at
+   * zero (or below) can still be cut from; the drawer flags it as a warning
+   * rather than hiding it.
    *
    * Every production changes these weights, so this is re-run after each save
    * and delete rather than loaded once — a cached list would keep showing the
@@ -254,7 +256,7 @@ export default function Product() {
       return Array.isArray(d) ? d : (d.rawMaterials ?? []);
     };
     try {
-      const query = { status: "in_stock", limit: 100 };
+      const query = { limit: 100 };
       const first = await GetRawMaterials({ ...query, page: 1 });
       const all = [...rmOf(first)];
       const pages = Math.min(

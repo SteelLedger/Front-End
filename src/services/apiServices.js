@@ -528,11 +528,20 @@ export const GetDashboardOutOfStock = () => {
  * require `fromDate`/`toDate` (DD/MM/YYYY, within the last 2 years and
  * spanning at most 2 years); the two inventory types are a snapshot of stock
  * right now and must be sent WITHOUT dates.
+ *
+ * `productionType` (single_line | double_line | triple_line | out) narrows a
+ * production_history report to one line type; left out, every type is in it.
  */
-export const requestReport = ({ reportType, fromDate, toDate } = {}) => {
+export const requestReport = ({
+  reportType,
+  fromDate,
+  toDate,
+  productionType,
+} = {}) => {
   return POST(`/reports/request`, {
     reportType,
     ...(fromDate && toDate ? { fromDate, toDate } : {}),
+    ...(productionType ? { productionType } : {}),
   });
 };
 

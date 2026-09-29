@@ -11,10 +11,13 @@ import {
   CheckCircle2,
   CalendarRange,
   FileSpreadsheet,
+  Filter,
+  ChevronDown,
 } from "lucide-react";
 import PeriodPicker from "../components/PeriodPicker";
 import InfoTip from "../components/InfoTip";
 import { requestReport } from "../services/apiServices";
+import { PRODUCTION_TYPES } from "../utils/production";
 import { defaultDateRange, rangeForPeriod } from "../utils/dateRange";
 import {
   REPORTS,
@@ -34,12 +37,64 @@ function initialRange() {
 }
 
 /**
+ * The optional line-type filter on Production History. A native select, dressed
+ * to sit under the PeriodPicker without looking like a different control.
+ */
+function ProductionTypeFilter({ id, value, onChange }) {
+  return (
+    <div className="mt-4">
+      <span
+        id={`${id}-label`}
+        className="mb-2 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+      >
+        Production Type
+        <InfoTip text="Only include runs cut on this line type. Leave it on All to include every run." />
+      </span>
+      <div className="relative">
+        <Filter
+          size={15}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#1E4D96]"
+        />
+        <select
+          aria-labelledby={`${id}-label`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full appearance-none rounded-lg border bg-white py-2.5 pl-9 pr-9 text-sm font-semibold text-slate-800 transition-colors hover:border-slate-300 focus:border-[#1E4D96] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${
+            value ? "border-[#1E4D96]/40" : "border-slate-200"
+          }`}
+        >
+          <option value="">All production types</option>
+          {PRODUCTION_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={15}
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
  * ReportCard
  * One report: what it contains, how it is scoped, and a button to queue it.
- * History reports carry the app's usual period chips; inventory reports have
- * nothing to configure, so they say so rather than showing a disabled control.
+ * History reports carry the app's usual period chips, plus any filters the
+ * report takes; inventory reports have nothing to configure, so they say so
+ * rather than showing a disabled control.
  */
-function ReportCard({ report, range, onRangeChange, onRequest, state }) {
+function ReportCard({
+  report,
+  range,
+  onRangeChange,
+  filters = {},
+  onFiltersChange,
+  onRequest,
+  state,
+}) {
   const Icon = ICONS[report.icon] ?? FileSpreadsheet;
   const isHistory = report.kind === "history";
   const problem = isHistory ? rangeProblem(range?.from, range?.to) : "";
@@ -86,6 +141,15 @@ function ReportCard({ report, range, onRangeChange, onRequest, state }) {
                 {problem}
               </p>
             )}
+            {report.filters?.includes("productionType") && (
+              <ProductionTypeFilter
+                id={`${report.type}-production-type`}
+                value={filters.productionType ?? ""}
+                onChange={(productionType) =>
+                  onFiltersChange({ ...filters, productionType })
+                }
+              />
+            )}
           </>
         ) : (
           <p className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -95,8 +159,9 @@ function ReportCard({ report, range, onRangeChange, onRequest, state }) {
         )}
       </div>
 
-      {/* Action */}
-      <div className="mt-4 flex items-center justify-between gap-3">
+      {/* Action — pinned to the bottom so buttons line up across a row of
+          cards whose descriptions and filters differ in height. */}
+      <div className="mt-auto flex items-center justify-between gap-3 pt-4">
         {queued ? (
           <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-700">
             <CheckCircle2 size={14} className="shrink-0" />
@@ -135,10 +200,24 @@ export default function Reports() {
       ]),
     ),
   );
+  // reportType -> { productionType } for reports that take filters. Empty
+  // means "all", and is left off the request.
+  const [filters, setFilters] = useState({});
   // reportType -> { status: "sending" | "queued" }
   const [states, setStates] = useState({});
 
   const email = getCurrentUser().email;
+
+  // A new period or filter means the old confirmation no longer describes what
+  // the button would send.
+  function clearQueued(type) {
+    setStates((s) => {
+      if (!s[type]) return s;
+      const clear = { ...s };
+      delete clear[type];
+      return clear;
+    });
+  }
 
   async function submit(report) {
     const range = ranges[report.type];
@@ -151,6 +230,11 @@ export default function Reports() {
         reportType: report.type,
         ...(report.kind === "history"
           ? { fromDate: range.fromDate, toDate: range.toDate }
+          : {}),
+        ...(report.filters?.includes("productionType")
+          ? {
+              productionType: filters[report.type]?.productionType || undefined,
+            }
           : {}),
       });
       const body = res?.data ?? {};
@@ -209,14 +293,12 @@ export default function Reports() {
               state={states[report.type]}
               onRangeChange={(next) => {
                 setRanges((r) => ({ ...r, [report.type]: next }));
-                // A new period means the old confirmation no longer describes
-                // what this button would send.
-                setStates((s) => {
-                  if (!s[report.type]) return s;
-                  const clear = { ...s };
-                  delete clear[report.type];
-                  return clear;
-                });
+                clearQueued(report.type);
+              }}
+              filters={filters[report.type]}
+              onFiltersChange={(next) => {
+                setFilters((f) => ({ ...f, [report.type]: next }));
+                clearQueued(report.type);
               }}
               onRequest={() => submit(report)}
             />

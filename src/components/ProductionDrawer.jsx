@@ -338,9 +338,12 @@ function EntryCard({
                 className={`${FIELD} ${c.sheetMissing ? BAD_BORDER : OK_BORDER} ${entry.rawMaterialId ? "text-slate-700" : "text-slate-400"}`}
               >
                 <option value="">-- Select Sheet --</option>
+                {/* Out-of-stock sheets are offered too — stock may go
+                    negative — but labelled so the pick is deliberate. */}
                 {sheets.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
+                    {s.totalQtyGm > 0 ? "" : " (out of stock)"}
                   </option>
                 ))}
               </select>
@@ -348,7 +351,9 @@ function EntryCard({
             {sheet && (
               <div className="mt-1.5 flex items-center gap-1 text-xs text-slate-500">
                 <span className="font-medium text-slate-600">Weight:</span>
-                <span className="font-semibold text-slate-800">
+                <span
+                  className={`font-semibold ${availableKg > 0 ? "text-slate-800" : "text-amber-600"}`}
+                >
                   {kgDisplay(availableKg)} kg
                 </span>
                 <InfoTip
@@ -964,12 +969,24 @@ export default function ProductionDrawer({
                         </span>
                       )}
                     </span>
+                    {/* Negative is allowed — the backend lets stock go below
+                        zero — so it's a heads-up, not an error. */}
                     <span
                       className={`shrink-0 text-sm font-semibold ${
-                        remainingKg < 0 ? "text-rose-600" : "text-emerald-600"
+                        remainingKg < 0 ? "text-amber-600" : "text-emerald-600"
                       }`}
+                      title={
+                        remainingKg < 0
+                          ? "This sheet's stock will go negative. Saving is still allowed."
+                          : undefined
+                      }
                     >
                       {kgDisplay(remainingKg)} kg
+                      {remainingKg < 0 && (
+                        <span className="ml-1 text-[11px] font-medium">
+                          (negative)
+                        </span>
+                      )}
                     </span>
                   </div>
                 );
