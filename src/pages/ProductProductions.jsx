@@ -6,15 +6,18 @@ import {
   Scissors,
   ShoppingCart,
   SlidersHorizontal,
-  Plus,
-  Minus,
   Inbox,
   Loader2,
   ChevronUp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  FileUp,
 } from "lucide-react";
+import AdjustmentDetailsModal, {
+  AdjustmentDetailsButton,
+} from "../components/AdjustmentDetailsModal";
+import FilterSelect from "../components/FilterSelect";
 import { GetProductInboundHistory } from "../services/apiServices";
 import { gmToKgDisplay } from "../utils/units";
 
@@ -37,9 +40,17 @@ const dash = (v) => (v && String(v).trim() ? v : "—");
 
 const num = (v) => Number(v) || 0;
 
+const isAdjustment = (e) => e.entryType === "stock_adjustment";
+
+/**
+ * Adjustments and CSV imports carry `adjustmentDetails`. They're read through
+ * the row's info icon only — never inline in the table.
+ */
+const detailsOf = (e) => String(e.adjustmentDetails ?? "").trim();
+
 /** A manual adjustment that took stock OUT — the only outbound entry here. */
 const isReduction = (e) =>
-  e.entryType === "stock_adjustment" && e.adjustmentDirection === "reduce";
+  isAdjustment(e) && e.adjustmentDirection === "reduce";
 
 /**
  * Quantities are grams on the wire. A reduction is rendered with a minus sign
@@ -62,7 +73,7 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value, hint }) {
       <div className="min-w-0">
         <p className="text-xs text-slate-400">{label}</p>
         <p className="truncate text-lg font-semibold text-slate-900">{value}</p>
-        {hint && <p className="truncate text-[11px] text-slate-400">{hint}</p>}
+        {hint && <p className="text-[11px] text-slate-400">{hint}</p>}
       </div>
     </div>
   );
@@ -109,9 +120,10 @@ function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
 }
 
 /**
- * How each `entryType` reads on screen. A stock adjustment splits in two —
- * an add and a reduce are the same entryType but opposite movements, and
- * telling them apart at a glance is the whole point of this column.
+ * How each `entryType` reads on screen. Both directions of a manual
+ * adjustment share one "Stock adjusted" badge — the quantity's sign (and its
+ * rose tint on a reduction) says which way it went, and the details dialog
+ * names it in full.
  */
 const ENTRY_TYPES = {
   purchase: {
@@ -124,22 +136,31 @@ const ENTRY_TYPES = {
     icon: Scissors,
     className: "bg-violet-50 text-violet-700",
   },
-  add: {
-    label: "Stock added",
-    icon: Plus,
+  stock_adjustment: {
+    label: "Stock adjusted",
+    icon: SlidersHorizontal,
     className: "bg-amber-50 text-amber-700",
   },
-  reduce: {
-    label: "Stock reduced",
-    icon: Minus,
-    className: "bg-rose-50 text-rose-700",
+  imported: {
+    label: "Imported",
+    icon: FileUp,
+    className: "bg-teal-50 text-teal-700",
   },
 };
 
+/**
+ * The Source filter — the API's `source` values. The two adjustment
+ * directions share one entryType, so they're one option here.
+ */
+const SOURCE_OPTIONS = [
+  { value: "all", label: "All sources" },
+  { value: "purchase", label: "Purchase" },
+  { value: "production", label: "Production" },
+  { value: "stock_adjustment", label: "Stock adjustment" },
+  { value: "imported", label: "Imported" },
+];
+
 function entryTypeMeta(e) {
-  if (e.entryType === "stock_adjustment") {
-    return ENTRY_TYPES[e.adjustmentDirection === "reduce" ? "reduce" : "add"];
-  }
   return (
     ENTRY_TYPES[e.entryType] ?? {
       // An entryType the backend adds later still renders as something.
@@ -165,16 +186,15 @@ function EntryTypeBadge({ entry }) {
 
 /**
  * The human handle for an entry: a circle purchase names its invoice and
- * supplier, a production names the sheet it was cut from, an adjustment shows
- * whatever reason was typed against it.
+ * supplier, a production names the sheet it was cut from. Adjustments and
+ * imports get a plain label — their typed details live behind the info icon.
  */
 function entryReference(e) {
   if (e.entryType === "production") {
     return e.rawMaterialName ? `Cut from ${e.rawMaterialName}` : "Production run";
   }
-  if (e.entryType === "stock_adjustment") {
-    return e.adjustmentDetails || "Manual adjustment";
-  }
+  if (isAdjustment(e)) return "Manual adjustment";
+  if (e.entryType === "imported") return "CSV import";
   return [e.invoiceNumber, e.supplierName].filter(Boolean).join(" · ") || "—";
 }
 
@@ -216,7 +236,12 @@ export default function ProductProductions() {
   // The product inventory row, returned by the history endpoint itself.
   const [product, setProduct] = useState(null);
 
+  // The adjustment whose details are open, if any.
+  const [detailsEntry, setDetailsEntry] = useState(null);
+  const closeDetails = useCallback(() => setDetailsEntry(null), []);
+
   // The history endpoint sorts by date only, and has no search.
+  const [source, setSource] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
   const [page, setPage] = useState(1);
 
@@ -227,6 +252,7 @@ export default function ProductProductions() {
     setListError("");
     try {
       const res = await GetProductInboundHistory(id, {
+        source,
         sortOrder,
         page,
         limit: PAGE_SIZE,
@@ -234,7 +260,11 @@ export default function ProductProductions() {
       const { entries, product: p, summary: s, total: t } = extractHistory(res);
       setRows(entries);
       setProduct(p);
-      setSummary(s);
+      // The stat cards describe the whole product. Whether a filtered
+      // response's summary is scoped to that source isn't pinned down, so
+      // only an unfiltered one is allowed to update them — the page always
+      // opens unfiltered, so they're filled before any filter can be picked.
+      if (source === "all") setSummary(s);
       setTotal(t);
     } catch (err) {
       setRows([]);
@@ -246,12 +276,17 @@ export default function ProductProductions() {
     } finally {
       setLoading(false);
     }
-  }, [id, sortOrder, page]);
+  }, [id, source, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchHistory();
   }, [fetchHistory]);
+
+  function changeSource(v) {
+    setSource(v);
+    setPage(1);
+  }
 
   // Date is the only sortable field the history endpoint offers.
   function toggleSort() {
@@ -267,20 +302,25 @@ export default function ProductProductions() {
     (num(product?.totalQty) > 0 ? "in_stock" : "out_of_stock");
   const inStock = product ? `${gmToKgDisplay(product.totalQty ?? 0)} kg` : "—";
 
-  // Adjustments net out, with the two directions spelled out underneath.
+  // "Stock adjusted" nets manual adds and reductions together with CSV-imported
+  // opening stock, so the four cards add up to stock on hand. The breakdown
+  // underneath names each part; imports only appear once there are some.
   const adjAdd = num(summary.totalAdjustmentAddQty);
   const adjReduce = Math.abs(num(summary.totalAdjustmentReduceQty));
-  const adjNet = adjAdd - adjReduce;
-  const adjValue =
-    adjAdd === 0 && adjReduce === 0
-      ? "0 kg"
-      : `${adjNet < 0 ? "−" : "+"}${gmToKgDisplay(Math.abs(adjNet))} kg`;
-  const adjHint =
-    adjAdd === 0 && adjReduce === 0
-      ? "No manual corrections"
-      : `+${gmToKgDisplay(adjAdd)} added · −${gmToKgDisplay(adjReduce)} reduced`;
+  const imported = num(summary.totalImportedQty);
+  const adjNet = adjAdd - adjReduce + imported;
+  const noAdjustments = adjAdd === 0 && adjReduce === 0 && imported === 0;
+  const adjValue = noAdjustments
+    ? "0 kg"
+    : `${adjNet < 0 ? "−" : "+"}${gmToKgDisplay(Math.abs(adjNet))} kg`;
+  const adjHint = noAdjustments
+    ? "No manual corrections or imports"
+    : `+${gmToKgDisplay(adjAdd)} added · −${gmToKgDisplay(adjReduce)} reduced` +
+      (imported > 0 ? ` · +${gmToKgDisplay(imported)} imported` : "");
 
   const totalBundles = num(summary.totalBundles);
+  const filtered = source !== "all";
+  const sourceLabel = SOURCE_OPTIONS.find((o) => o.value === source)?.label;
 
   const sortProps = { sortBy: "date", sortOrder, onSort: toggleSort };
 
@@ -352,7 +392,7 @@ export default function ProductProductions() {
             icon={SlidersHorizontal}
             iconBg="bg-amber-50"
             iconColor="text-amber-600"
-            label="Adjustments"
+            label="Stock adjusted"
             value={adjValue}
             hint={adjHint}
           />
@@ -366,10 +406,23 @@ export default function ProductProductions() {
               {total > 0 && (
                 <span className="ml-2 text-xs font-medium text-slate-400">
                   {total} {total === 1 ? "entry" : "entries"}
-                  {totalBundles > 0 && ` · ${totalBundles} bundles`}
+                  {/* The bundle count is the whole product's, so it would
+                      misread beside a filtered entry count. */}
+                  {!filtered &&
+                    totalBundles > 0 &&
+                    ` · ${totalBundles} bundles`}
                 </span>
               )}
             </h2>
+            <FilterSelect
+              label="Source"
+              value={source}
+              onChange={changeSource}
+              options={SOURCE_OPTIONS}
+              active={filtered}
+              width={200}
+              compact
+            />
           </div>
 
           {loading ? (
@@ -390,11 +443,26 @@ export default function ProductProductions() {
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
               <Inbox size={32} className="mb-2" />
-              <p className="text-sm">Nothing has come into this product yet.</p>
+              {filtered ? (
+                <>
+                  <p className="text-sm">
+                    No {sourceLabel.toLowerCase()} entries for this product.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => changeSource("all")}
+                    className="mt-2 rounded-lg px-3 py-1.5 text-sm font-medium text-[#1E4D96] transition-colors hover:bg-blue-50"
+                  >
+                    Show all sources
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm">Nothing has come into this product yet.</p>
+              )}
             </div>
           ) : (
             <>
-              {/* Phones and tablets get rows; the table needs 780px. */}
+              {/* Phones and tablets get rows; the table needs 860px. */}
               <div className="divide-y divide-slate-100 xl:hidden">
                 {rows.map((e) => (
                   <div key={e._id} className="flex items-center gap-3 p-4">
@@ -423,12 +491,19 @@ export default function ProductProductions() {
                         </p>
                       )}
                     </div>
+                    {detailsOf(e) && (
+                      <div className="shrink-0">
+                        <AdjustmentDetailsButton
+                          onClick={() => setDetailsEntry(e)}
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
 
               <div className="hidden overflow-x-auto xl:block">
-                <table className="w-full min-w-[780px] text-sm">
+                <table className="w-full min-w-[860px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <SortHeader label="Date" field="date" {...sortProps} />
@@ -439,6 +514,9 @@ export default function ProductProductions() {
                       </th>
                       <th className="px-4 py-3 text-right font-semibold">
                         Quantity
+                      </th>
+                      <th className="w-24 px-4 py-3 text-center font-semibold">
+                        Action
                       </th>
                     </tr>
                   </thead>
@@ -465,6 +543,13 @@ export default function ProductProductions() {
                           }`}
                         >
                           {entryQty(e)}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {detailsOf(e) && (
+                            <AdjustmentDetailsButton
+                              onClick={() => setDetailsEntry(e)}
+                            />
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -505,6 +590,12 @@ export default function ProductProductions() {
           )}
         </div>
       </div>
+
+      <AdjustmentDetailsModal
+        open={!!detailsEntry}
+        entry={detailsEntry}
+        onClose={closeDetails}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   Boxes,
   ShoppingCart,
   Layers,
+  SlidersHorizontal,
   Inbox,
   Loader2,
   ChevronUp,
@@ -12,6 +13,10 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import AdjustmentDetailsModal, {
+  AdjustmentDetailsButton,
+} from "../components/AdjustmentDetailsModal";
+import FilterSelect from "../components/FilterSelect";
 import { GetRawMaterialInboundHistory } from "../services/apiServices";
 import { gmToKgDisplay } from "../utils/units";
 
@@ -31,7 +36,31 @@ function extractHistory(res) {
 
 const dash = (v) => (v && String(v).trim() ? v : "—");
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
+const num = (v) => Number(v) || 0;
+
+const isAdjustment = (e) => e.entryType === "stock_adjustment";
+
+/**
+ * Adjustments carry `adjustmentDetails`. They're read through the row's info
+ * icon only — never inline in the table.
+ */
+const detailsOf = (e) => String(e.adjustmentDetails ?? "").trim();
+
+/** A manual adjustment that took stock OUT — the only outbound entry here. */
+const isReduction = (e) =>
+  isAdjustment(e) && e.adjustmentDirection === "reduce";
+
+/**
+ * Quantities are grams on the wire. A reduction is rendered with a minus sign
+ * off the absolute value, so it reads correctly whether the API signs those
+ * quantities or reports them as positive magnitudes.
+ */
+function entryQty(e) {
+  const kg = gmToKgDisplay(Math.abs(num(e.quantity)));
+  return isReduction(e) ? `−${kg} kg` : `${kg} kg`;
+}
+
+function StatCard({ icon: Icon, iconBg, iconColor, label, value, hint }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <span
@@ -42,6 +71,7 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
       <div className="min-w-0">
         <p className="text-xs text-slate-400">{label}</p>
         <p className="truncate text-lg font-semibold text-slate-900">{value}</p>
+        {hint && <p className="text-[11px] text-slate-400">{hint}</p>}
       </div>
     </div>
   );
@@ -87,25 +117,69 @@ function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
   );
 }
 
-/** Where an inbound entry came from: a purchase bill or a production offcut. */
-function EntryTypeBadge({ type }) {
-  const isPurchase = type === "purchase";
+/**
+ * How each `entryType` reads on screen. Both directions of a manual
+ * adjustment share one "Stock adjusted" badge — the quantity's sign (and its
+ * rose tint on a reduction) says which way it went, and the details dialog
+ * names it in full.
+ */
+const ENTRY_TYPES = {
+  purchase: {
+    label: "Purchase",
+    icon: ShoppingCart,
+    className: "bg-blue-50 text-[#1E4D96]",
+  },
+  balance_patta: {
+    label: "Balance patta",
+    icon: Layers,
+    className: "bg-violet-50 text-violet-700",
+  },
+  stock_adjustment: {
+    label: "Stock adjusted",
+    icon: SlidersHorizontal,
+    className: "bg-amber-50 text-amber-700",
+  },
+};
+
+/**
+ * The Source filter — the API's `source` values. The two adjustment
+ * directions share one entryType, so they're one option here.
+ */
+const SOURCE_OPTIONS = [
+  { value: "all", label: "All sources" },
+  { value: "purchase", label: "Purchase" },
+  { value: "balance_patta", label: "Balance patta" },
+  { value: "stock_adjustment", label: "Stock adjustment" },
+];
+
+function entryTypeMeta(e) {
+  return (
+    ENTRY_TYPES[e.entryType] ?? {
+      // An entryType the backend adds later still renders as something.
+      label: dash(e.entryType),
+      icon: SlidersHorizontal,
+      className: "bg-slate-100 text-slate-600",
+    }
+  );
+}
+
+/** Where this stock came from — the highlight of each row. */
+function EntryTypeBadge({ entry }) {
+  const { label, icon: Icon, className } = entryTypeMeta(entry);
   return (
     <span
-      className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
-        isPurchase
-          ? "bg-blue-50 text-[#1E4D96]"
-          : "bg-violet-50 text-violet-700"
-      }`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${className}`}
     >
-      {isPurchase ? "Purchase" : "Balance patta"}
+      <Icon size={11} strokeWidth={2.5} />
+      {label}
     </span>
   );
 }
 
 /**
  * The human handle for an entry: a purchase names its invoice and supplier,
- * a balance patta names the run it was cut from.
+ * a balance patta names the run it was cut from. Adjustments get a plain
+ * label — their typed details live behind the info icon.
  */
 function entryReference(e) {
   if (e.entryType === "balance_patta") {
@@ -113,6 +187,7 @@ function entryReference(e) {
       ? `Cut from ${e.sourceRawMaterialName}`
       : "From production";
   }
+  if (isAdjustment(e)) return "Manual adjustment";
   return [e.invoiceNumber, e.supplierName].filter(Boolean).join(" · ") || "—";
 }
 
@@ -128,8 +203,10 @@ function SpecPill({ label, value }) {
 
 /**
  * RawMaterialPurchases
- * Every purchase that built up one raw-material inventory row, reached by
- * clicking its name on the Raw Material page.
+ * Everything that has come into one raw-material inventory row, reached by
+ * clicking its name on the Raw Material page — purchases, balance patta
+ * returned by production runs, and manual stock adjustments. The twin of the
+ * product-side ProductProductions; keep the two in step.
  *
  * Size / point / grade are identical for every row here, so they sit in the
  * header rather than repeating down the table.
@@ -147,7 +224,12 @@ export default function RawMaterialPurchases() {
   // no longer has to hunt for it through the paginated /raw-materials list.
   const [material, setMaterial] = useState(null);
 
+  // The adjustment whose details are open, if any.
+  const [detailsEntry, setDetailsEntry] = useState(null);
+  const closeDetails = useCallback(() => setDetailsEntry(null), []);
+
   // The history endpoint sorts by date only, and has no search.
+  const [source, setSource] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
   const [page, setPage] = useState(1);
 
@@ -158,6 +240,7 @@ export default function RawMaterialPurchases() {
     setListError("");
     try {
       const res = await GetRawMaterialInboundHistory(id, {
+        source,
         sortOrder,
         page,
         limit: PAGE_SIZE,
@@ -170,7 +253,11 @@ export default function RawMaterialPurchases() {
       } = extractHistory(res);
       setRows(entries);
       setMaterial(rawMaterial);
-      setSummary(s);
+      // The stat cards describe the whole raw material. Whether a filtered
+      // response's summary is scoped to that source isn't pinned down, so
+      // only an unfiltered one is allowed to update them — the page always
+      // opens unfiltered, so they're filled before any filter can be picked.
+      if (source === "all") setSummary(s);
       setTotal(t);
     } catch {
       setRows([]);
@@ -178,12 +265,17 @@ export default function RawMaterialPurchases() {
     } finally {
       setLoading(false);
     }
-  }, [id, sortOrder, page]);
+  }, [id, source, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchHistory();
   }, [fetchHistory]);
+
+  function changeSource(v) {
+    setSource(v);
+    setPage(1);
+  }
 
   // Date is the only sortable field the history endpoint offers.
   function toggleSort() {
@@ -197,6 +289,24 @@ export default function RawMaterialPurchases() {
   const inStock = material
     ? `${gmToKgDisplay(material.totalQty ?? 0)} kg`
     : "—";
+  const status =
+    material?.status ??
+    (num(material?.totalQty) > 0 ? "in_stock" : "out_of_stock");
+
+  // Manual adds and reductions net out, with the two spelled out underneath.
+  const adjAdd = num(summary.totalAdjustmentAddQty);
+  const adjReduce = Math.abs(num(summary.totalAdjustmentReduceQty));
+  const adjNet = adjAdd - adjReduce;
+  const noAdjustments = adjAdd === 0 && adjReduce === 0;
+  const adjValue = noAdjustments
+    ? "0 kg"
+    : `${adjNet < 0 ? "−" : "+"}${gmToKgDisplay(Math.abs(adjNet))} kg`;
+  const adjHint = noAdjustments
+    ? "No manual corrections"
+    : `+${gmToKgDisplay(adjAdd)} added · −${gmToKgDisplay(adjReduce)} reduced`;
+
+  const filtered = source !== "all";
+  const sourceLabel = SOURCE_OPTIONS.find((o) => o.value === source)?.label;
 
   const sortProps = { sortBy: "date", sortOrder, onSort: toggleSort };
 
@@ -217,7 +327,8 @@ export default function RawMaterialPurchases() {
             {title}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Every purchase that built up this raw material's stock.
+            Everything that has come into this raw material's stock — purchases,
+            balance patta and manual corrections.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <SpecPill label="Size" value={spec.size} />
@@ -226,27 +337,19 @@ export default function RawMaterialPurchases() {
             {material && (
               <span
                 className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
-                  (material.status ??
-                    (Number(material.totalQty) > 0
-                      ? "in_stock"
-                      : "out_of_stock")) === "in_stock"
+                  status === "in_stock"
                     ? "bg-emerald-50 text-emerald-700"
                     : "bg-rose-50 text-rose-700"
                 }`}
               >
-                {(material.status ??
-                  (Number(material.totalQty) > 0
-                    ? "in_stock"
-                    : "out_of_stock")) === "in_stock"
-                  ? "In stock"
-                  : "Out of stock"}
+                {status === "in_stock" ? "In stock" : "Out of stock"}
               </span>
             )}
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* Stats — one per way stock arrives, plus what's left. */}
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             icon={Boxes}
             iconBg="bg-blue-50"
@@ -268,9 +371,17 @@ export default function RawMaterialPurchases() {
             label="From balance patta"
             value={`${gmToKgDisplay(summary.totalBalancePattaQty || 0)} kg`}
           />
+          <StatCard
+            icon={SlidersHorizontal}
+            iconBg="bg-amber-50"
+            iconColor="text-amber-600"
+            label="Stock adjusted"
+            value={adjValue}
+            hint={adjHint}
+          />
         </div>
 
-        {/* Purchases */}
+        {/* Entries */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
             <h2 className="text-base font-semibold text-slate-900">
@@ -281,6 +392,15 @@ export default function RawMaterialPurchases() {
                 </span>
               )}
             </h2>
+            <FilterSelect
+              label="Source"
+              value={source}
+              onChange={changeSource}
+              options={SOURCE_OPTIONS}
+              active={filtered}
+              width={200}
+              compact
+            />
           </div>
 
           {loading ? (
@@ -301,19 +421,35 @@ export default function RawMaterialPurchases() {
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
               <Inbox size={32} className="mb-2" />
-              <p className="text-sm">
-                Nothing has come into this raw material yet.
-              </p>
+              {filtered ? (
+                <>
+                  <p className="text-sm">
+                    No {sourceLabel.toLowerCase()} entries for this raw
+                    material.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => changeSource("all")}
+                    className="mt-2 rounded-lg px-3 py-1.5 text-sm font-medium text-[#1E4D96] transition-colors hover:bg-blue-50"
+                  >
+                    Show all sources
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm">
+                  Nothing has come into this raw material yet.
+                </p>
+              )}
             </div>
           ) : (
             <>
-              {/* Phones and tablets get rows; the table needs 740px. */}
+              {/* Phones and tablets get rows; the table needs 820px. */}
               <div className="divide-y divide-slate-100 xl:hidden">
                 {rows.map((e) => (
                   <div key={e._id} className="flex items-center gap-3 p-4">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <EntryTypeBadge type={e.entryType} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <EntryTypeBadge entry={e} />
                         <span className="text-xs text-slate-400">
                           {dash(e.date)}
                         </span>
@@ -323,8 +459,12 @@ export default function RawMaterialPurchases() {
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="font-semibold text-slate-900">
-                        {gmToKgDisplay(e.quantity ?? 0)} kg
+                      <p
+                        className={`font-semibold ${
+                          isReduction(e) ? "text-rose-600" : "text-slate-900"
+                        }`}
+                      >
+                        {entryQty(e)}
                       </p>
                       {e.bundles != null && (
                         <p className="mt-0.5 text-xs text-slate-400">
@@ -332,12 +472,19 @@ export default function RawMaterialPurchases() {
                         </p>
                       )}
                     </div>
+                    {detailsOf(e) && (
+                      <div className="shrink-0">
+                        <AdjustmentDetailsButton
+                          onClick={() => setDetailsEntry(e)}
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
 
               <div className="hidden overflow-x-auto xl:block">
-                <table className="w-full min-w-[740px] text-sm">
+                <table className="w-full min-w-[820px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <SortHeader label="Date" field="date" {...sortProps} />
@@ -349,6 +496,9 @@ export default function RawMaterialPurchases() {
                       <th className="px-4 py-3 text-right font-semibold">
                         Quantity
                       </th>
+                      <th className="w-24 px-4 py-3 text-center font-semibold">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -358,7 +508,7 @@ export default function RawMaterialPurchases() {
                           {dash(e.date)}
                         </td>
                         <td className="px-4 py-3">
-                          <EntryTypeBadge type={e.entryType} />
+                          <EntryTypeBadge entry={e} />
                         </td>
                         <td className="px-4 py-3 text-slate-700">
                           {entryReference(e)}
@@ -366,8 +516,19 @@ export default function RawMaterialPurchases() {
                         <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-700">
                           {e.bundles ?? "—"}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">
-                          {gmToKgDisplay(e.quantity ?? 0)} kg
+                        <td
+                          className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
+                            isReduction(e) ? "text-rose-600" : "text-slate-900"
+                          }`}
+                        >
+                          {entryQty(e)}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {detailsOf(e) && (
+                            <AdjustmentDetailsButton
+                              onClick={() => setDetailsEntry(e)}
+                            />
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -408,6 +569,12 @@ export default function RawMaterialPurchases() {
           )}
         </div>
       </div>
+
+      <AdjustmentDetailsModal
+        open={!!detailsEntry}
+        entry={detailsEntry}
+        onClose={closeDetails}
+      />
     </div>
   );
 }

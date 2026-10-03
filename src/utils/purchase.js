@@ -107,8 +107,8 @@ export const LINE_FIELDS = [
 
 /**
  * Size, quantity and bundles are amounts: a 0, a negative or a stray letter is
- * not a line the backend can store. Point and grade are labels ("120p", "M5"),
- * so they only have to be present.
+ * not a line the backend can store. Point and grade are labels ("120p", "M5",
+ * "M5 OUT"), so they only have to be present.
  */
 export const AMOUNT_FIELDS = ["size", "quantity", "bundles"];
 

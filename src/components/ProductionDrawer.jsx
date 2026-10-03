@@ -338,12 +338,15 @@ function EntryCard({
                 className={`${FIELD} ${c.sheetMissing ? BAD_BORDER : OK_BORDER} ${entry.rawMaterialId ? "text-slate-700" : "text-slate-400"}`}
               >
                 <option value="">-- Select Sheet --</option>
-                {/* Out-of-stock sheets are offered too — stock may go
-                    negative — but labelled so the pick is deliberate. */}
-                {sheets.map((s) => (
+                {/* In-stock sheets only. The one already picked stays listed
+                    even when it has none — an edit whose run used up its sheet
+                    would otherwise open with nothing selected. */}
+                {(sheet && !sheets.includes(sheet)
+                  ? [...sheets, sheet]
+                  : sheets
+                ).map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
-                    {s.totalQtyGm > 0 ? "" : " (out of stock)"}
                   </option>
                 ))}
               </select>
@@ -804,6 +807,9 @@ export default function ProductionDrawer({
     sheet && sheet.size !== "" && !Number.isNaN(Number(sheet.size))
       ? Number(sheet.size) + 1
       : null;
+  // What Select Sheet offers: sheets with stock to cut. Measured with the
+  // edit's credit, so the sheet this run already emptied still counts.
+  const inStockSheets = sheets.filter((s) => availableFor(s) > 0);
 
   // ── Entries ─────────────────────────────────────────────────────────────
   const cards = entries.map((e) => {
@@ -918,7 +924,7 @@ export default function ProductionDrawer({
               index={i}
               numbered={numbered}
               check={cards[i].check}
-              sheets={sheets}
+              sheets={inStockSheets}
               sheet={cards[i].sheet}
               availableKg={availableFor(cards[i].sheet)}
               creditKg={creditFor(cards[i].sheet)}

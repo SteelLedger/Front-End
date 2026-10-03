@@ -319,13 +319,17 @@ export const GetRawMaterials = ({
  * Inbound stock history for one raw-material row, from the durable
  * stock_movements collection. Replaces reading balance-patta entries off
  * GET /purchases, which stopped returning them on 2026-08-28. Entries carry
- * `entryType: "purchase" | "balance_patta"`.
+ * `entryType: "purchase" | "balance_patta" | "stock_adjustment"`; adjustments
+ * also carry `adjustmentDirection` and `adjustmentDetails`. `source` narrows
+ * the list to one entryType.
  */
 export const GetRawMaterialInboundHistory = (
   id,
-  { fromDate, toDate, sortOrder, page, limit } = {},
+  { source, fromDate, toDate, sortOrder, page, limit } = {},
 ) => {
   const qs = new URLSearchParams();
+  // "all" is the API's own default, so it isn't sent.
+  if (source && source !== "all") qs.append("source", source);
   if (fromDate) qs.append("fromDate", fromDate);
   if (toDate) qs.append("toDate", toDate);
   if (sortOrder) qs.append("sortOrder", sortOrder);
@@ -341,17 +345,22 @@ export const GetRawMaterialInboundHistory = (
  * GetRawMaterialInboundHistory. Replaces reading runs off GET /productions,
  * which only ever knew about productions.
  *
- * Entries carry `entryType: "purchase" | "production" | "stock_adjustment"`:
- * a circle bought on a purchase bill, a production run, or a manual
- * add/reduce (which also carries `adjustmentDirection`). The response bundles
+ * Entries carry `entryType: "purchase" | "production" | "stock_adjustment" |
+ * "imported"`: a circle bought on a purchase bill, a production run, a manual
+ * add/reduce (which also carries `adjustmentDirection`), or opening stock from
+ * a CSV import. Adjustments and imports carry `adjustmentDetails`; `source`
+ * narrows the list to one entryType. The response bundles
  * the product inventory row and a summary alongside the entries, so the page
  * doesn't have to hunt for the row through /products.
  */
 export const GetProductInboundHistory = (
   id,
-  { fromDate, toDate, sortOrder, page, limit } = {},
+  { source, fromDate, toDate, sortOrder, page, limit } = {},
 ) => {
   const qs = new URLSearchParams();
+  // One entryType: purchase | production | stock_adjustment | imported.
+  // "all" is the API's own default, so it isn't sent.
+  if (source && source !== "all") qs.append("source", source);
   // Inclusive DD/MM/YYYY range over the event date.
   if (fromDate) qs.append("fromDate", fromDate);
   if (toDate) qs.append("toDate", toDate);

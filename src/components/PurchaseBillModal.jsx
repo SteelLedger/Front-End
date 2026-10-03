@@ -12,7 +12,7 @@ export function TypeBadge({ line }) {
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
         isCircleLine(line)
-          ? "bg-amber-50 text-amber-700"
+          ? "bg-slate-100 text-slate-600"
           : "bg-slate-100 text-slate-600"
       }`}
     >

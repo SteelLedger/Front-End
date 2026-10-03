@@ -1,6 +1,7 @@
 import axios from "axios";
 import { clearSession } from "../utils/auth";
 import { getActiveOrgId } from "../utils/organization";
+import { reportServiceUnavailable } from "../utils/maintenance";
 
 // === Create Axios instance ===
 const axiosInstance = axios.create({
@@ -51,15 +52,29 @@ axiosInstance.interceptors.request.use((config) => {
   return config;
 });
 
+const isMaintenanceCall = (url = "") =>
+  url.split("?")[0].startsWith("/maintenance");
+
 // On an expired / invalid session, clear creds and bounce to login.
+// On a 503 (maintenance mode), hand over to the maintenance notice.
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
+    const status = error?.response?.status;
+    if (status === 401) {
       clearSession();
       if (!window.location.pathname.startsWith("/login")) {
         window.location.assign("/login");
       }
+    }
+    // MaintenanceProvider handles its own status call's failure itself, so
+    // that one is left to reject normally.
+    if (status === 503 && !isMaintenanceCall(error.config?.url)) {
+      // When the notice is taking over, the request never settles: the screen
+      // that made it is being unmounted, and rejecting would only flash its
+      // "Couldn't load…" toasts on top of the notice. Nobody listening (the
+      // signed-out pages) -> reject as usual so the form shows the message.
+      if (reportServiceUnavailable()) return new Promise(() => {});
     }
     return Promise.reject(error);
   },

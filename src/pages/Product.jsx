@@ -241,10 +241,9 @@ export default function Product() {
   const [reloadKey, setReloadKey] = useState(0);
 
   /**
-   * The sheets the drawer can cut from — every sheet, out-of-stock ones
-   * included. The backend lets raw-material stock go negative, so a sheet at
-   * zero (or below) can still be cut from; the drawer flags it as a warning
-   * rather than hiding it.
+   * Every sheet, out-of-stock ones included: the drawer resolves an edit's
+   * saved sheet from this list, but its Select Sheet only OFFERS the ones with
+   * stock left.
    *
    * Every production changes these weights, so this is re-run after each save
    * and delete rather than loaded once — a cached list would keep showing the
