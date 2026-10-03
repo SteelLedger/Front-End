@@ -323,7 +323,7 @@ export default function RawMaterialDrawer({
               {mode === "add" ? "Add Purchase" : "Edit Purchase"}
             </h3>
             <p className="text-xs text-slate-400">
-              Patta — raw material &amp; circle stock
+              Patta: raw material &amp; circle stock
             </p>
           </div>
           <button

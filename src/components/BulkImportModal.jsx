@@ -107,7 +107,7 @@ export default function BulkImportModal({
         setError("That file has a header but no data rows.");
       } else if (rows > MAX_ROWS) {
         setError(
-          `That file has about ${rows.toLocaleString("en-IN")} data rows — the limit is ${MAX_ROWS.toLocaleString("en-IN")}. Split it and import in parts.`,
+          `That file has about ${rows.toLocaleString("en-IN")} data rows, but the limit is ${MAX_ROWS.toLocaleString("en-IN")}. Split it and import in parts.`,
         );
       }
     } catch {
@@ -193,15 +193,14 @@ export default function BulkImportModal({
                 They won't appear in the list straight away
                 {job.recipientEmail ? (
                   <>
-                    {" "}
-                    — a summary goes to{" "}
+                    . A summary goes to{" "}
                     <span className="font-medium text-slate-700">
                       {job.recipientEmail}
                     </span>{" "}
                     when it finishes.
                   </>
                 ) : (
-                  " — you'll get a summary email when it finishes."
+                  ". You'll get a summary email when it finishes."
                 )}
               </p>
             </div>

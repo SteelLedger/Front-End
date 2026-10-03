@@ -87,16 +87,23 @@ function PurchaseTypes({ lines = [] }) {
   );
 }
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
+/**
+ * Two across on phones, so below `sm` the card tightens and the label drops
+ * "Total" (`shortLabel`) to fit beside the icon; from `sm` up it's unchanged.
+ */
+function StatCard({ icon: Icon, iconBg, iconColor, label, shortLabel, value }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
       <span
-        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
+        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
-        <Icon size={18} />
+        <Icon size={18} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
+        <p className="text-[11px] text-slate-400 sm:text-xs">
+          <span className="sm:hidden">{shortLabel ?? label}</span>
+          <span className="hidden sm:inline">{label}</span>
+        </p>
         <p className="text-lg font-semibold truncate text-slate-900">{value}</p>
       </div>
     </div>
@@ -390,12 +397,13 @@ export default function Purchase() {
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
         {/* Stats strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4 sm:gap-3 sm:mb-6">
           <StatCard
             icon={Layers}
             iconBg="bg-blue-50"
             iconColor="text-blue-600"
             label="Total Purchases"
+            shortLabel="Purchases"
             value={String(total)}
           />
           <StatCard
@@ -403,6 +411,7 @@ export default function Purchase() {
             iconBg="bg-emerald-50"
             iconColor="text-emerald-600"
             label="Total Quantity (kg)"
+            shortLabel="Quantity (kg)"
             value={gmToKgDisplay(summary.totalQuantity || 0)}
           />
           <StatCard
@@ -410,6 +419,7 @@ export default function Purchase() {
             iconBg="bg-amber-50"
             iconColor="text-amber-600"
             label="Total Bundles"
+            shortLabel="Bundles"
             value={String(summary.totalBundles ?? 0)}
           />
           <StatCard

@@ -162,7 +162,7 @@ export default function SearchableSelect({
             <li className="px-3 py-2 text-xs text-slate-400">
               {value.trim()
                 ? allowCustom
-                  ? `No match — “${value.trim()}” will be added as new`
+                  ? `No match, so “${value.trim()}” will be added as new`
                   : "No matches"
                 : (emptyText ?? `No ${noun}s yet`)}
             </li>

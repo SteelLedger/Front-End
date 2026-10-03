@@ -144,11 +144,11 @@ function checkEntry(e, { sheet, maxSize }) {
           : sizeInvalid
             ? `Product size can be at most ${maxSize} for this sheet.`
             : productHalfDone
-              ? "Product size and quantity go together — fill both, or clear both to record byproducts only."
+              ? "Product size and quantity go together. Fill both, or clear both to record byproducts only."
               : balanceHalfDone
                 ? "Each balance patta needs both a size and a quantity."
                 : balanceDuplicate
-                  ? "Each balance patta size can only be used once — merge the repeated rows."
+                  ? "Each balance patta size can only be used once. Merge the repeated rows."
                   : !hasProduct && !byproductCount
                     ? "Add a product, or at least one byproduct."
                     : "";
@@ -440,7 +440,7 @@ function EntryCard({
             </Field>
             <Field
               label="Product Bundles"
-              info="How many bundles this run produced. A count, not a weight — optional, and recorded on the production only."
+              info="How many bundles this run produced. It's a count, not a weight. Optional, and recorded on the production only."
             >
               <input
                 inputMode="numeric"
@@ -456,7 +456,7 @@ function EntryCard({
             </Field>
             <Field
               label="Waste (In kg)"
-              info="Scrap that is lost. Deducted from the sheet and not added to any stock — unlike balance patta, which goes back into raw material."
+              info="Scrap that is lost. It's deducted from the sheet and not added to any stock, unlike balance patta, which goes back into raw material."
             >
               <input
                 type="number"
@@ -480,7 +480,7 @@ function EntryCard({
           ) : (
             sheet && (
               <p className="mt-1.5 text-xs text-slate-400">
-                Sheet size {sheet.size} — product size up to {maxSize}.
+                Sheet size {sheet.size}, so product size can go up to {maxSize}.
               </p>
             )
           )}

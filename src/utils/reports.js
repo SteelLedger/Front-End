@@ -24,7 +24,7 @@ export const REPORTS = [
     kind: "history",
     label: "Production History",
     description:
-      "Every cutting run in the period — the sheet used, what it produced, plus waste, balance patta and byproducts.",
+      "Every cutting run in the period, with the sheet used, what it produced, plus waste, balance patta and byproducts.",
     icon: "Factory",
     tone: "violet",
     // Optional narrowing the API accepts for this report only.

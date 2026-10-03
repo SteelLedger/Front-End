@@ -60,18 +60,31 @@ function entryQty(e) {
   return isReduction(e) ? `−${kg} kg` : `${kg} kg`;
 }
 
+/**
+ * Two across on phones. A ~140px card can't fit "12,345 kg" beside an icon, so
+ * below `sm` it takes the Dashboard's arrangement: the label with the icon to
+ * its right, then the figure across the full width, then the hint. The text
+ * block is `contents` there, so its lines join the card's grid. From `sm` up
+ * it's the original row — icon, then the text block — unchanged.
+ */
 function StatCard({ icon: Icon, iconBg, iconColor, label, value, hint }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex sm:items-center sm:gap-3 sm:p-4">
       <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconBg} ${iconColor}`}
+        className={`col-start-2 row-start-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:h-10 sm:w-10 ${iconBg} ${iconColor}`}
       >
-        <Icon size={18} />
+        <Icon size={18} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
       </span>
-      <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
-        <p className="truncate text-lg font-semibold text-slate-900">{value}</p>
-        {hint && <p className="text-[11px] text-slate-400">{hint}</p>}
+      <div className="contents min-w-0 sm:block">
+        <p className="col-start-1 row-start-1 self-center text-[11px] text-slate-400 sm:text-xs">
+          {label}
+        </p>
+        <p className="col-span-2 truncate text-lg font-semibold text-slate-900">
+          {value}
+        </p>
+        {hint && (
+          <p className="col-span-2 text-[11px] text-slate-400">{hint}</p>
+        )}
       </div>
     </div>
   );
@@ -327,7 +340,7 @@ export default function RawMaterialPurchases() {
             {title}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Everything that has come into this raw material's stock — purchases,
+            Everything that has come into this raw material's stock: purchases,
             balance patta and manual corrections.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -349,7 +362,7 @@ export default function RawMaterialPurchases() {
         </div>
 
         {/* Stats — one per way stock arrives, plus what's left. */}
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6 sm:gap-3 xl:grid-cols-4">
           <StatCard
             icon={Boxes}
             iconBg="bg-blue-50"

@@ -141,6 +141,25 @@ const BYPRODUCT_COLUMNS = [
   },
 ];
 
+// Phone/tablet cards — the same layout as the Raw Material page's. Module-level
+// so InventoryTab gets a stable object. `rawMaterialName` is "—" (product) or
+// "" (byproduct) when there's no source sheet, and the line drops it then.
+const hasSheet = (name) => name && name !== "—";
+
+const PRODUCT_CARD = {
+  title: (r) => r.productName,
+  to: (r) => `/product-inventory/${r.id}`,
+  subtitle: (r) =>
+    `Size ${r.productSize}` +
+    (hasSheet(r.rawMaterialName) ? ` · Cut from ${r.rawMaterialName}` : ""),
+};
+
+const BYPRODUCT_CARD = {
+  title: (r) => r.byProductName,
+  subtitle: (r) =>
+    hasSheet(r.rawMaterialName) ? `From ${r.rawMaterialName}` : null,
+};
+
 const productStats = (s) => [
   {
     icon: Boxes,
@@ -264,6 +283,7 @@ export default function ProductInventory() {
             extract={extractProducts}
             normalize={normalizeProduct}
             columns={PRODUCT_COLUMNS}
+            card={PRODUCT_CARD}
             statCards={productStats}
             searchPlaceholder="Search product, size, raw material"
             reloadKey={reloadKey}
@@ -275,6 +295,7 @@ export default function ProductInventory() {
             extract={extractByProducts}
             normalize={normalizeByProduct}
             columns={BYPRODUCT_COLUMNS}
+            card={BYPRODUCT_CARD}
             statCards={byproductStats}
             searchPlaceholder="Search byproduct or raw material"
           />

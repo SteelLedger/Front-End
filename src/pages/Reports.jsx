@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
   Filter,
   ChevronDown,
+  Download,
 } from "lucide-react";
 import PeriodPicker from "../components/PeriodPicker";
 import InfoTip from "../components/InfoTip";
@@ -80,11 +81,39 @@ function ProductionTypeFilter({ id, value, onChange }) {
 }
 
 /**
+ * The download icon that queues a report. It sits in line with the card's
+ * period picker (or its "no date range" line), so the label it lacks lives in
+ * `aria-label` and the tooltip — which also say the CSV comes by email, since
+ * a download icon alone would promise a file right away.
+ */
+function RequestButton({ label, busy, queued, disabled, onClick, className = "" }) {
+  const title = busy
+    ? `Requesting ${label}…`
+    : `${queued ? "Request again" : "Request"}: ${label} CSV (emailed to you)`;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={title}
+      title={title}
+      className={`flex w-12 shrink-0 items-center justify-center rounded-lg bg-[#1E4D96] text-white transition-colors hover:bg-[#1A3F7A] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50 ${className}`}
+    >
+      {busy ? (
+        <Loader2 size={18} className="animate-spin" />
+      ) : (
+        <Download size={18} />
+      )}
+    </button>
+  );
+}
+
+/**
  * ReportCard
- * One report: what it contains, how it is scoped, and a button to queue it.
- * History reports carry the app's usual period chips, plus any filters the
- * report takes; inventory reports have nothing to configure, so they say so
- * rather than showing a disabled control.
+ * One report: what it contains, how it is scoped, and a download icon beside
+ * the scope to queue it. History reports carry the app's usual period picker,
+ * plus any filters the report takes; inventory reports have nothing to
+ * configure, so they say so rather than showing a disabled control.
  */
 function ReportCard({
   report,
@@ -100,6 +129,13 @@ function ReportCard({
   const problem = isHistory ? rangeProblem(range?.from, range?.to) : "";
   const busy = state?.status === "sending";
   const queued = state?.status === "queued" ? state : null;
+  // Shown directly under the row the button sits in.
+  const queuedNote = queued && (
+    <p className="mt-2 flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-700">
+      <CheckCircle2 size={14} className="shrink-0" />
+      <span className="truncate">Queued. Check your email.</span>
+    </p>
+  );
 
   return (
     <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
@@ -131,11 +167,24 @@ function ReportCard({
                 text={`Reports reach back at most ${MAX_RANGE_YEARS} years and can cover at most ${MAX_RANGE_YEARS} years at a time.`}
               />
             </span>
-            <PeriodPicker
-              value={range}
-              onChange={onRangeChange}
-              min={earliestISO()}
-            />
+            {/* The button stretches to the picker's two-line height. */}
+            <div className="flex items-stretch gap-2">
+              <div className="min-w-0 flex-1">
+                <PeriodPicker
+                  value={range}
+                  onChange={onRangeChange}
+                  min={earliestISO()}
+                />
+              </div>
+              <RequestButton
+                label={report.label}
+                busy={busy}
+                queued={!!queued}
+                disabled={busy || !!problem}
+                onClick={onRequest}
+              />
+            </div>
+            {queuedNote}
             {problem && (
               <p className="mt-2 text-xs font-medium text-rose-600">
                 {problem}
@@ -152,33 +201,22 @@ function ReportCard({
             )}
           </>
         ) : (
-          <p className="flex items-center gap-1.5 text-xs text-slate-500">
-            <CalendarRange size={14} className="shrink-0 text-slate-400" />
-            Current snapshot — no date range needed.
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-slate-500">
+              <CalendarRange size={14} className="shrink-0 text-slate-400" />
+              Current snapshot, so no date range is needed.
+            </p>
+            <RequestButton
+              label={report.label}
+              busy={busy}
+              queued={!!queued}
+              disabled={busy}
+              onClick={onRequest}
+              className="h-11"
+            />
+          </div>
         )}
-      </div>
-
-      {/* Action — pinned to the bottom so buttons line up across a row of
-          cards whose descriptions and filters differ in height. */}
-      <div className="mt-auto flex items-center justify-between gap-3 pt-4">
-        {queued ? (
-          <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-700">
-            <CheckCircle2 size={14} className="shrink-0" />
-            <span className="truncate">Queued — check your email</span>
-          </p>
-        ) : (
-          <span />
-        )}
-        <button
-          type="button"
-          onClick={onRequest}
-          disabled={busy || !!problem}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#1E4D96] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1A3F7A] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50"
-        >
-          {busy && <Loader2 size={15} className="animate-spin" />}
-          {busy ? "Requesting…" : queued ? "Request again" : "Request CSV"}
-        </button>
+        {!isHistory && queuedNote}
       </div>
     </div>
   );
@@ -279,7 +317,7 @@ export default function Reports() {
               ) : (
                 " to your account's email address"
               )}
-              . Large periods take longer — you can keep working meanwhile.
+              . Large periods take longer, but you can keep working in the meantime.
             </p>
           </div>
         </div>

@@ -172,8 +172,8 @@ export default function Settings() {
                 System Status
               </h2>
               <p className="mt-0.5 text-sm text-slate-500">
-                Whether the system is up or down for maintenance. Read-only —
-                only an administrator can change it.
+                Whether the system is up or down for maintenance. Read-only.
+                Only an administrator can change it.
               </p>
             </div>
           </div>

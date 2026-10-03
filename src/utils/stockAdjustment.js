@@ -64,7 +64,7 @@ export function validateAdjustment(form, currentQtyGm = 0) {
   }
   if (form.direction === "reduce" && resultingQtyGm(form, currentQtyGm) < 0) {
     return {
-      message: `Only ${gmToKgDisplay(currentQtyGm)} kg is on hand — you can't reduce by more than that.`,
+      message: `Only ${gmToKgDisplay(currentQtyGm)} kg is on hand, so you can't reduce by more than that.`,
       field: "quantity",
     };
   }
