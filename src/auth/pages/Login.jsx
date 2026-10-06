@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import AuthShell, { AuthError, AuthButton } from "../components/AuthShell";
 import { AUTH_INPUT_CLASS, AUTH_LINK_CLASS } from "../../utils/authStyles";
 import { login } from "../../services/apiServices";
-import { decodeToken } from "../../utils/auth";
+import { decodeToken, mustSetPassword } from "../../utils/auth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -49,7 +49,13 @@ export default function LoginPage() {
         "user",
         JSON.stringify({ ...claims, ...(user || {}) }),
       );
-      navigate("/dashboard");
+      // `isPasswordReset: false` means this is still the temporary password an
+      // admin issued, so the account isn't usable until it's replaced. Read it
+      // back through mustSetPassword() so the polarity lives in one place —
+      // ProtectedRoute enforces the same check on every other route.
+      navigate(mustSetPassword() ? "/set-password" : "/dashboard", {
+        replace: true,
+      });
     } catch (err) {
       setError(
         err?.response?.data?.message ||
@@ -174,49 +180,10 @@ export default function LoginPage() {
           Sign in
         </AuthButton>
 
-        {/* Divider */}
-        <div className="my-6 flex items-center gap-3">
-          <div className="h-px flex-1 bg-slate-200" />
-          <span className="text-xs font-medium text-slate-400">
-            or continue with
-          </span>
-          <div className="h-px flex-1 bg-slate-200" />
-        </div>
-
-        <button
-          type="button"
-          className="flex w-full items-center justify-center gap-2.5 rounded-lg border-[1.5px] border-slate-200 bg-white py-2.5 text-sm font-medium text-[#0D2140] transition hover:bg-slate-50"
-        >
-          <svg width="18" height="18" viewBox="0 0 18 18">
-            <path
-              fill="#4285F4"
-              d="M16.51 8.18h-7.4v3.13h4.27c-.19 1-.75 1.84-1.6 2.4v2h2.57c1.5-1.38 2.37-3.41 2.37-5.8 0-.47-.04-.93-.11-1.37l-.1-.36z"
-            />
-            <path
-              fill="#34A853"
-              d="M9.11 17c2.14 0 3.94-.7 5.25-1.9l-2.57-2c-.71.47-1.62.75-2.68.75-2.06 0-3.8-1.38-4.42-3.24H2.06v2.06A8 8 0 0 0 9.11 17z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M4.69 10.61A4.78 4.78 0 0 1 4.44 9c0-.56.1-1.1.25-1.61V5.33H2.06A8 8 0 0 0 1.11 9c0 1.29.31 2.51.85 3.59l.1.18 2.63-2.16z"
-            />
-            <path
-              fill="#EA4335"
-              d="M9.11 3.98c1.16 0 2.2.4 3.02 1.18l2.26-2.25A7.97 7.97 0 0 0 9.11 1a8 8 0 0 0-7.05 4.21l.1.18 2.53 2C5.3 5.38 7.05 3.98 9.11 3.98z"
-            />
-          </svg>
-          Sign in with Google
-        </button>
       </form>
 
       <p className="mt-7 text-center text-[13px] text-slate-500">
-        Don't have an account?{" "}
-        <a
-          href="#"
-          className="-my-1.5 inline-block py-1.5 align-baseline font-semibold text-[#2563C4] no-underline"
-        >
-          Request access
-        </a>
+        Don't have an account? Ask an admin on your team to invite you.
       </p>
     </AuthShell>
   );

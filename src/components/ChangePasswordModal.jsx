@@ -3,6 +3,7 @@ import { toast } from "react-toastify";
 import { X, KeyRound, Eye, EyeOff, Check, Loader2 } from "lucide-react";
 import { passwordRules, validateNewPassword } from "../utils/password";
 import { changePassword } from "../services/apiServices";
+import { markPasswordReset } from "../utils/auth";
 
 const emptyForm = () => ({
   currentPassword: "",
@@ -144,6 +145,9 @@ export default function ChangePasswordModal({ open, onClose }) {
         currentPassword: form.currentPassword,
         newPassword: form.newPassword,
       });
+      // The account is no longer on an admin-issued password, whichever form
+      // changed it — so the first-login gate must stop firing here too.
+      markPasswordReset();
       setForm(emptyForm());
       toast.success("Password changed");
       onClose();

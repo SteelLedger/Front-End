@@ -26,7 +26,7 @@ export default function ComingSoon({ title = "This page" }) {
           {title}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-500">
-          This module is coming soon — it's part of the next build phase. Hang
+          This module is coming soon. It's part of the next build phase. Hang
           tight!
         </p>
       </div>

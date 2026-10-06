@@ -4,53 +4,89 @@ import {
   ArrowLeft,
   Boxes,
   Scissors,
-  Package,
+  ShoppingCart,
+  SlidersHorizontal,
   Inbox,
   Loader2,
   ChevronUp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  FileUp,
 } from "lucide-react";
-import { GetProductions, GetProducts } from "../services/apiServices";
+import AdjustmentDetailsModal, {
+  AdjustmentDetailsButton,
+} from "../components/AdjustmentDetailsModal";
+import FilterSelect from "../components/FilterSelect";
+import { GetProductInboundHistory } from "../services/apiServices";
 import { gmToKgDisplay } from "../utils/units";
 
 const PAGE_SIZE = 10;
 
-function extractProductions(res) {
+/** { product, entries, summary } out of the response envelope. */
+function extractHistory(res) {
   const body = res?.data ?? {};
   const d = body.data ?? {};
-  const list = Array.isArray(d) ? d : (d.productions ?? []);
+  const entries = Array.isArray(d.entries) ? d.entries : [];
   return {
-    list: Array.isArray(list) ? list : [],
-    summary: (Array.isArray(d) ? {} : d.summary) ?? {},
-    total: Number(body.meta?.pagination?.total ?? list.length) || 0,
+    entries,
+    product: d.product ?? null,
+    summary: d.summary ?? {},
+    total: Number(body.meta?.pagination?.total ?? entries.length) || 0,
   };
 }
 
 const dash = (v) => (v && String(v).trim() ? v : "—");
 
-/** ISO or DD/MM/YYYY in, DD/MM/YYYY out. */
-function fmtDate(value) {
-  if (!value) return "—";
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+const num = (v) => Number(v) || 0;
+
+const isAdjustment = (e) => e.entryType === "stock_adjustment";
+
+/**
+ * Adjustments and CSV imports carry `adjustmentDetails`. They're read through
+ * the row's info icon only — never inline in the table.
+ */
+const detailsOf = (e) => String(e.adjustmentDetails ?? "").trim();
+
+/** A manual adjustment that took stock OUT — the only outbound entry here. */
+const isReduction = (e) =>
+  isAdjustment(e) && e.adjustmentDirection === "reduce";
+
+/**
+ * Quantities are grams on the wire. A reduction is rendered with a minus sign
+ * off the absolute value, so it reads correctly whether the API signs those
+ * quantities or reports them as positive magnitudes.
+ */
+function entryQty(e) {
+  const kg = gmToKgDisplay(Math.abs(num(e.quantity)));
+  return isReduction(e) ? `−${kg} kg` : `${kg} kg`;
 }
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
+/**
+ * Two across on phones. A ~140px card can't fit "12,345 kg" beside an icon, so
+ * below `sm` it takes the Dashboard's arrangement: the label with the icon to
+ * its right, then the figure across the full width, then the hint. The text
+ * block is `contents` there, so its lines join the card's grid. From `sm` up
+ * it's the original row — icon, then the text block — unchanged.
+ */
+function StatCard({ icon: Icon, iconBg, iconColor, label, value, hint }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex sm:items-center sm:gap-3 sm:p-4">
       <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconBg} ${iconColor}`}
+        className={`col-start-2 row-start-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:h-10 sm:w-10 ${iconBg} ${iconColor}`}
       >
-        <Icon size={18} />
+        <Icon size={18} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
       </span>
-      <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
-        <p className="truncate text-lg font-semibold text-slate-900">{value}</p>
+      <div className="contents min-w-0 sm:block">
+        <p className="col-start-1 row-start-1 self-center text-[11px] text-slate-400 sm:text-xs">
+          {label}
+        </p>
+        <p className="col-span-2 truncate text-lg font-semibold text-slate-900">
+          {value}
+        </p>
+        {hint && (
+          <p className="col-span-2 text-[11px] text-slate-400">{hint}</p>
+        )}
       </div>
     </div>
   );
@@ -78,14 +114,15 @@ function SortIcon({ active, dir }) {
 }
 
 function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
-  const right = align === "right";
   return (
-    <th className={`px-4 py-3 font-semibold ${right ? "text-right" : ""}`}>
+    <th
+      className={`px-4 py-3 font-semibold ${align === "right" ? "text-right" : ""}`}
+    >
       <button
         type="button"
         onClick={() => onSort(field)}
         className={`inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-slate-700 ${
-          right ? "flex-row-reverse" : ""
+          align === "right" ? "flex-row-reverse" : ""
         } ${sortBy === field ? "text-[#1E4D96]" : ""}`}
       >
         {label}
@@ -95,7 +132,86 @@ function SortHeader({ label, field, sortBy, sortOrder, onSort, align }) {
   );
 }
 
-/** Product size / raw material as small pills under the title. */
+/**
+ * How each `entryType` reads on screen. Both directions of a manual
+ * adjustment share one "Stock adjusted" badge — the quantity's sign (and its
+ * rose tint on a reduction) says which way it went, and the details dialog
+ * names it in full.
+ */
+const ENTRY_TYPES = {
+  purchase: {
+    label: "Purchase",
+    icon: ShoppingCart,
+    className: "bg-blue-50 text-[#1E4D96]",
+  },
+  production: {
+    label: "Production",
+    icon: Scissors,
+    className: "bg-violet-50 text-violet-700",
+  },
+  stock_adjustment: {
+    label: "Stock adjusted",
+    icon: SlidersHorizontal,
+    className: "bg-amber-50 text-amber-700",
+  },
+  imported: {
+    label: "Imported",
+    icon: FileUp,
+    className: "bg-teal-50 text-teal-700",
+  },
+};
+
+/**
+ * The Source filter — the API's `source` values. The two adjustment
+ * directions share one entryType, so they're one option here.
+ */
+const SOURCE_OPTIONS = [
+  { value: "all", label: "All sources" },
+  { value: "purchase", label: "Purchase" },
+  { value: "production", label: "Production" },
+  { value: "stock_adjustment", label: "Stock adjustment" },
+  { value: "imported", label: "Imported" },
+];
+
+function entryTypeMeta(e) {
+  return (
+    ENTRY_TYPES[e.entryType] ?? {
+      // An entryType the backend adds later still renders as something.
+      label: dash(e.entryType),
+      icon: SlidersHorizontal,
+      className: "bg-slate-100 text-slate-600",
+    }
+  );
+}
+
+/** Where this stock came from — the highlight of each row. */
+function EntryTypeBadge({ entry }) {
+  const { label, icon: Icon, className } = entryTypeMeta(entry);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${className}`}
+    >
+      <Icon size={11} strokeWidth={2.5} />
+      {label}
+    </span>
+  );
+}
+
+/**
+ * The human handle for an entry: a circle purchase names its invoice and
+ * supplier, a production names the sheet it was cut from. Adjustments and
+ * imports get a plain label — their typed details live behind the info icon.
+ */
+function entryReference(e) {
+  if (e.entryType === "production") {
+    return e.rawMaterialName ? `Cut from ${e.rawMaterialName}` : "Production run";
+  }
+  if (isAdjustment(e)) return "Manual adjustment";
+  if (e.entryType === "imported") return "CSV import";
+  return [e.invoiceNumber, e.supplierName].filter(Boolean).join(" · ") || "—";
+}
+
+/** Product size / source material as small pills under the title. */
 function SpecPill({ label, value }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs">
@@ -105,24 +221,21 @@ function SpecPill({ label, value }) {
   );
 }
 
-/** The byproducts a run threw off, as a compact inline list. */
-function ByproductList({ items = [] }) {
-  if (!items.length) return <span className="text-slate-300">—</span>;
-  return (
-    <span className="text-xs text-slate-500">
-      {items
-        .map((b) => `${b.byProductName} ${gmToKgDisplay(b.qty || 0)} kg`)
-        .join(", ")}
-    </span>
-  );
-}
-
 /**
  * ProductProductions
- * Every production run that made one product, reached by clicking its name on
- * the Product inventory page — the counterpart to the raw-material inbound
- * history. Product size and source material are identical for every row here,
- * so they sit in the header rather than repeating down the table.
+ * Everything that has come into one product's stock, reached by clicking its
+ * name on the Product inventory page — the product-side twin of the
+ * raw-material inbound history.
+ *
+ * Fed by GET /products/:id/inbound-history, which reads the durable
+ * product_stock_movements collection. That is why this is no longer a list of
+ * production runs: a product's stock can also arrive as a circle on a purchase
+ * bill, or be corrected by hand. The endpoint returns the inventory row and a
+ * summary alongside the entries, so nothing here has to page through
+ * /products to find its own row.
+ *
+ * Product size and source material are the same for every row, so they sit in
+ * the header rather than repeating down the table.
  */
 export default function ProductProductions() {
   const { id } = useParams();
@@ -133,96 +246,99 @@ export default function ProductProductions() {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
 
-  // The product inventory row, for the header and stock-on-hand.
+  // The product inventory row, returned by the history endpoint itself.
   const [product, setProduct] = useState(null);
 
-  const [sortBy, setSortBy] = useState("productionDate");
+  // The adjustment whose details are open, if any.
+  const [detailsEntry, setDetailsEntry] = useState(null);
+  const closeDetails = useCallback(() => setDetailsEntry(null), []);
+
+  // The history endpoint sorts by date only, and has no search.
+  const [source, setSource] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
   const [page, setPage] = useState(1);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const fetchProductions = useCallback(async () => {
+  const fetchHistory = useCallback(async () => {
     setLoading(true);
     setListError("");
     try {
-      const res = await GetProductions({
-        productId: id,
-        sortBy,
+      const res = await GetProductInboundHistory(id, {
+        source,
         sortOrder,
         page,
         limit: PAGE_SIZE,
       });
-      const { list, summary: s, total: t } = extractProductions(res);
-      setRows(list);
-      setSummary(s);
+      const { entries, product: p, summary: s, total: t } = extractHistory(res);
+      setRows(entries);
+      setProduct(p);
+      // The stat cards describe the whole product. Whether a filtered
+      // response's summary is scoped to that source isn't pinned down, so
+      // only an unfiltered one is allowed to update them — the page always
+      // opens unfiltered, so they're filled before any filter can be picked.
+      if (source === "all") setSummary(s);
       setTotal(t);
-    } catch {
+    } catch (err) {
       setRows([]);
-      setListError("Couldn't load production history for this product.");
+      setListError(
+        err?.response?.status === 404
+          ? "This product no longer exists."
+          : "Couldn't load inbound history for this product.",
+      );
     } finally {
       setLoading(false);
     }
-  }, [id, sortBy, sortOrder, page]);
+  }, [id, source, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchProductions();
-  }, [fetchProductions]);
+    fetchHistory();
+  }, [fetchHistory]);
 
-  // There's no GET /products/:id, so page the list and pick this row out — it
-  // carries the stock-on-hand figure the production rows don't have.
-  useEffect(() => {
-    let alive = true;
-    async function loadProduct() {
-      const rowsOf = (res) => {
-        const d = res?.data?.data ?? {};
-        return Array.isArray(d) ? d : (d.products ?? []);
-      };
-      try {
-        const first = await GetProducts({ page: 1, limit: 100 });
-        let all = rowsOf(first);
-        const pages = Math.min(
-          first?.data?.meta?.pagination?.totalPages ?? 1,
-          10,
-        );
-        for (let p = 2; p <= pages && !all.some((m) => m._id === id); p++) {
-          const next = await GetProducts({ page: p, limit: 100 });
-          all = all.concat(rowsOf(next));
-        }
-        if (alive) setProduct(all.find((m) => (m._id ?? m.id) === id) ?? null);
-      } catch {
-        if (alive) setProduct(null); // header falls back to the run rows
-      }
-    }
-    loadProduct();
-    return () => {
-      alive = false;
-    };
-  }, [id]);
-
-  function toggleSort(field) {
-    if (sortBy === field) setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
-    else {
-      setSortBy(field);
-      setSortOrder("asc");
-    }
+  function changeSource(v) {
+    setSource(v);
     setPage(1);
   }
 
-  // Fall back to a run while the inventory row loads — every run here made the
-  // same product.
+  // Date is the only sortable field the history endpoint offers.
+  function toggleSort() {
+    setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
+    setPage(1);
+  }
+
+  // Fall back to an entry while the row loads — each one names the same product.
   const spec = product ?? rows[0] ?? {};
   const title = spec.productName || "Product";
   const status =
     product?.status ??
-    (Number(product?.totalQty) > 0 ? "in_stock" : "out_of_stock");
+    (num(product?.totalQty) > 0 ? "in_stock" : "out_of_stock");
   const inStock = product ? `${gmToKgDisplay(product.totalQty ?? 0)} kg` : "—";
 
-  const sortProps = { sortBy, sortOrder, onSort: toggleSort };
+  // "Stock adjusted" nets manual adds and reductions together with CSV-imported
+  // opening stock, so the four cards add up to stock on hand. The breakdown
+  // underneath names each part; imports only appear once there are some.
+  const adjAdd = num(summary.totalAdjustmentAddQty);
+  const adjReduce = Math.abs(num(summary.totalAdjustmentReduceQty));
+  const imported = num(summary.totalImportedQty);
+  const adjNet = adjAdd - adjReduce + imported;
+  const noAdjustments = adjAdd === 0 && adjReduce === 0 && imported === 0;
+  const adjValue = noAdjustments
+    ? "0 kg"
+    : `${adjNet < 0 ? "−" : "+"}${gmToKgDisplay(Math.abs(adjNet))} kg`;
+  const adjHint = noAdjustments
+    ? "No manual corrections or imports"
+    : `+${gmToKgDisplay(adjAdd)} added · −${gmToKgDisplay(adjReduce)} reduced` +
+      (imported > 0 ? ` · +${gmToKgDisplay(imported)} imported` : "");
+
+  const totalBundles = num(summary.totalBundles);
+  const filtered = source !== "all";
+  const sourceLabel = SOURCE_OPTIONS.find((o) => o.value === source)?.label;
+
+  const sortProps = { sortBy: "date", sortOrder, onSort: toggleSort };
 
   return (
-    <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5">
+    <div className="min-h-full space-y-4 bg-[#F7F8FB] p-4 lg:space-y-5 lg:p-5">
       <div className="mx-auto max-w-[1400px]">
         <Link
           to="/product-inventory"
@@ -238,11 +354,15 @@ export default function ProductProductions() {
             {title}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Every production run that made this product.
+            Everything that has come into this product's stock: productions,
+            circle purchases and manual corrections.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <SpecPill label="Size" value={spec.productSize} />
-            <SpecPill label="Cut from" value={spec.rawMaterialName} />
+            {/* Null on a product that only ever arrived as a purchased circle. */}
+            {spec.rawMaterialName && (
+              <SpecPill label="Cut from" value={spec.rawMaterialName} />
+            )}
             {product && (
               <span
                 className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -257,8 +377,8 @@ export default function ProductProductions() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* Stats — one per way stock arrives, plus what's left. */}
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6 sm:gap-3 xl:grid-cols-4">
           <StatCard
             icon={Boxes}
             iconBg="bg-blue-50"
@@ -268,31 +388,54 @@ export default function ProductProductions() {
           />
           <StatCard
             icon={Scissors}
-            iconBg="bg-emerald-50"
-            iconColor="text-emerald-600"
-            label="Total produced"
-            value={`${gmToKgDisplay(summary.totalQuantity || 0)} kg`}
-          />
-          <StatCard
-            icon={Package}
             iconBg="bg-violet-50"
             iconColor="text-violet-600"
-            label="Production runs"
-            value={String(total)}
+            label="From production"
+            value={`${gmToKgDisplay(summary.totalProductionQty || 0)} kg`}
+          />
+          <StatCard
+            icon={ShoppingCart}
+            iconBg="bg-emerald-50"
+            iconColor="text-emerald-600"
+            label="From purchases"
+            value={`${gmToKgDisplay(summary.totalPurchaseQty || 0)} kg`}
+            hint="Circles bought on a bill"
+          />
+          <StatCard
+            icon={SlidersHorizontal}
+            iconBg="bg-amber-50"
+            iconColor="text-amber-600"
+            label="Stock adjusted"
+            value={adjValue}
+            hint={adjHint}
           />
         </div>
 
-        {/* Runs */}
+        {/* Entries */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
             <h2 className="text-base font-semibold text-slate-900">
-              Production History
+              Inbound History
               {total > 0 && (
                 <span className="ml-2 text-xs font-medium text-slate-400">
-                  {total} {total === 1 ? "run" : "runs"}
+                  {total} {total === 1 ? "entry" : "entries"}
+                  {/* The bundle count is the whole product's, so it would
+                      misread beside a filtered entry count. */}
+                  {!filtered &&
+                    totalBundles > 0 &&
+                    ` · ${totalBundles} bundles`}
                 </span>
               )}
             </h2>
+            <FilterSelect
+              label="Source"
+              value={source}
+              onChange={changeSource}
+              options={SOURCE_OPTIONS}
+              active={filtered}
+              width={200}
+              compact
+            />
           </div>
 
           {loading ? (
@@ -304,7 +447,7 @@ export default function ProductProductions() {
               <p className="text-sm">{listError}</p>
               <button
                 type="button"
-                onClick={fetchProductions}
+                onClick={fetchHistory}
                 className="mt-2 font-medium text-[#1E4D96] hover:underline"
               >
                 Retry
@@ -313,37 +456,60 @@ export default function ProductProductions() {
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
               <Inbox size={32} className="mb-2" />
-              <p className="text-sm">
-                No production runs recorded for this product.
-              </p>
+              {filtered ? (
+                <>
+                  <p className="text-sm">
+                    No {sourceLabel.toLowerCase()} entries for this product.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => changeSource("all")}
+                    className="mt-2 rounded-lg px-3 py-1.5 text-sm font-medium text-[#1E4D96] transition-colors hover:bg-blue-50"
+                  >
+                    Show all sources
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm">Nothing has come into this product yet.</p>
+              )}
             </div>
           ) : (
             <>
-              {/* Phones and tablets get rows; the table needs the width. */}
+              {/* Phones and tablets get rows; the table needs 860px. */}
               <div className="divide-y divide-slate-100 xl:hidden">
-                {rows.map((r) => (
-                  <div key={r._id} className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-slate-800">
-                          {gmToKgDisplay(r.productQty || 0)} kg produced
-                        </p>
-                        <p className="mt-0.5 truncate text-xs text-slate-400">
-                          {fmtDate(r.productionDate)} · from{" "}
-                          {dash(r.rawMaterialName)}
-                        </p>
+                {rows.map((e) => (
+                  <div key={e._id} className="flex items-center gap-3 p-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <EntryTypeBadge entry={e} />
+                        <span className="text-xs text-slate-400">
+                          {dash(e.date)}
+                        </span>
                       </div>
-                      <div className="shrink-0 text-right text-xs text-slate-500">
-                        <p>{r.productBundles || 0} bundles</p>
-                        <p className="mt-0.5">
-                          Waste {gmToKgDisplay(r.wasteQty || 0)} kg
-                        </p>
-                      </div>
-                    </div>
-                    {r.byProducts?.length > 0 && (
-                      <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
-                        <ByproductList items={r.byProducts} />
+                      <p className="mt-1 truncate text-sm text-slate-700">
+                        {entryReference(e)}
                       </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p
+                        className={`font-semibold ${
+                          isReduction(e) ? "text-rose-600" : "text-slate-900"
+                        }`}
+                      >
+                        {entryQty(e)}
+                      </p>
+                      {e.bundles != null && (
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {e.bundles} bundles
+                        </p>
+                      )}
+                    </div>
+                    {detailsOf(e) && (
+                      <div className="shrink-0">
+                        <AdjustmentDetailsButton
+                          onClick={() => setDetailsEntry(e)}
+                        />
+                      </div>
                     )}
                   </div>
                 ))}
@@ -353,47 +519,50 @@ export default function ProductProductions() {
                 <table className="w-full min-w-[860px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      <SortHeader
-                        label="Date"
-                        field="productionDate"
-                        {...sortProps}
-                      />
-                      <th className="px-4 py-3 font-semibold">Cut from</th>
-                      <th className="px-4 py-3 font-semibold">Byproducts</th>
+                      <SortHeader label="Date" field="date" {...sortProps} />
+                      <th className="px-4 py-3 font-semibold">Source</th>
+                      <th className="px-4 py-3 font-semibold">Reference</th>
                       <th className="px-4 py-3 text-right font-semibold">
                         Bundles
                       </th>
                       <th className="px-4 py-3 text-right font-semibold">
-                        Waste
+                        Quantity
                       </th>
-                      <SortHeader
-                        label="Produced"
-                        field="productQty"
-                        align="right"
-                        {...sortProps}
-                      />
+                      <th className="w-24 px-4 py-3 text-center font-semibold">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {rows.map((r) => (
-                      <tr key={r._id} className="hover:bg-slate-50/70">
+                    {rows.map((e) => (
+                      <tr key={e._id} className="hover:bg-slate-50/70">
                         <td className="whitespace-nowrap px-4 py-3 text-slate-500">
-                          {fmtDate(r.productionDate)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-slate-700">
-                          {dash(r.rawMaterialName)}
+                          {dash(e.date)}
                         </td>
                         <td className="px-4 py-3">
-                          <ByproductList items={r.byProducts} />
+                          <EntryTypeBadge entry={e} />
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
-                          {r.productBundles || 0}
+                        <td className="px-4 py-3 text-slate-700">
+                          <span className="block max-w-[320px] truncate">
+                            {entryReference(e)}
+                          </span>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
-                          {gmToKgDisplay(r.wasteQty || 0)} kg
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-slate-700">
+                          {e.bundles ?? "—"}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">
-                          {gmToKgDisplay(r.productQty || 0)} kg
+                        <td
+                          className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
+                            isReduction(e) ? "text-rose-600" : "text-slate-900"
+                          }`}
+                        >
+                          {entryQty(e)}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {detailsOf(e) && (
+                            <AdjustmentDetailsButton
+                              onClick={() => setDetailsEntry(e)}
+                            />
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -434,6 +603,12 @@ export default function ProductProductions() {
           )}
         </div>
       </div>
+
+      <AdjustmentDetailsModal
+        open={!!detailsEntry}
+        entry={detailsEntry}
+        onClose={closeDetails}
+      />
     </div>
   );
 }

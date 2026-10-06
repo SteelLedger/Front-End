@@ -29,7 +29,7 @@ const STEP_COPY = {
   },
   reset: {
     title: "Set a new password",
-    body: "Almost there — choose a password you don't use anywhere else.",
+    body: "Almost there. Choose a password you don't use anywhere else.",
   },
   done: {
     title: "Password reset",
@@ -468,7 +468,7 @@ export default function ForgotPassword() {
             </svg>
           </span>
           <p className="text-sm font-semibold text-emerald-800">
-            All set — taking you to sign in…
+            All set. Taking you to sign in…
           </p>
         </div>
       )}

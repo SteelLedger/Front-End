@@ -7,7 +7,6 @@ import {
   Share2,
   MoreVertical,
   FileSpreadsheet,
-  BarChart3,
   Pencil,
   Trash2,
   Inbox,
@@ -423,8 +422,8 @@ export default function Sales() {
           );
           toast.error(
             missingId
-              ? "Byproducts can't be sold yet — /by-products returns no id per row (see console)."
-              : "Byproducts can't be sold — rows have no byProductName (see console).",
+              ? "Byproducts can't be sold yet because /by-products returns no id per row (see console)."
+              : "Byproducts can't be sold because the rows have no byProductName (see console).",
           );
         }
       } else {

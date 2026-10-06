@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import {
   Search,
   X,
@@ -10,6 +11,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import AdjustButton from "./AdjustButton";
+import { gmToKgDisplay } from "../utils/units";
 
 const PAGE_SIZE = 10;
 
@@ -40,16 +43,17 @@ function SortIcon({ active, dir }) {
   );
 }
 
+/** Two across on phones, so below `sm` the card tightens; unchanged from `sm`. */
 function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
       <span
-        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
+        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
-        <Icon size={18} />
+        <Icon size={18} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
+        <p className="text-[11px] text-slate-400 sm:text-xs">{label}</p>
         <p className="text-lg font-semibold truncate text-slate-900">{value}</p>
       </div>
     </div>
@@ -60,16 +64,27 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
  * InventoryTab
  * Server-driven inventory list: stats + search + status filter + sortable
  * columns + pagination. Config comes from props (kept module-stable by callers).
+ *
+ * `onView` and `onAdjust` are both optional row actions and share one Actions
+ * column, which only appears when at least one of them is given. Byproducts
+ * have no stock-adjustment endpoint, so that tab passes `onView` alone.
+ *
+ * `columns` drive the desktop table. Below xl each row is a card laid out like
+ * the Raw Material page's, from `card`: `title(row)`, an optional `to(row)`
+ * that links it, and an optional `subtitle(row)` spec line. The quantity and
+ * status on the right come from the row's own `totalQtyGm` and `status`.
  */
 export default function InventoryTab({
   fetchFn,
   extract,
   normalize,
   columns,
+  card,
   statCards,
   searchPlaceholder = "Search…",
   reloadKey,
   onView,
+  onAdjust,
 }) {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
@@ -138,7 +153,7 @@ export default function InventoryTab({
   return (
     <div>
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
         {cards.map((c) => (
           <StatCard key={c.label} {...c} />
         ))}
@@ -215,40 +230,79 @@ export default function InventoryTab({
           </div>
         ) : (
           <>
-            {/* Phones get cards: first column is the heading, the rest
-                become label/value pairs. */}
+            {/* Below xl, cards in the Raw Material page's layout: name and spec
+                line on the left, quantity and status on the right, actions
+                underneath. The actions sit outside the Link — a button nested
+                in an anchor would make one swallow the other's tap. */}
             <div className="divide-y divide-slate-100 xl:hidden">
-              {rows.map((row, ri) => (
-                <div key={row.id ?? ri} className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 font-semibold text-slate-800">
-                      {columns[0].render(row)}
-                    </div>
-                    {onView && (
-                      <button
-                        type="button"
-                        onClick={() => onView(row)}
-                        aria-label="View byproducts"
-                        className="shrink-0 rounded-md p-2.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+              {rows.map((row, ri) => {
+                const to = card.to?.(row);
+                const subtitle = card.subtitle?.(row);
+                const inStock = row.status === "in_stock";
+                const body = (
+                  <>
+                    <div className="min-w-0">
+                      <p
+                        className={`truncate font-medium ${to ? "text-[#1E4D96]" : "text-slate-800"}`}
                       >
-                        <Eye size={16} />
-                      </button>
+                        {card.title(row)}
+                      </p>
+                      {subtitle && (
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {subtitle}
+                        </p>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-semibold text-slate-900">
+                        {gmToKgDisplay(row.totalQtyGm ?? 0)} kg
+                      </p>
+                      <span
+                        className={`mt-1 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          inStock
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-rose-50 text-rose-700"
+                        }`}
+                      >
+                        {inStock ? "In stock" : "Out of stock"}
+                      </span>
+                    </div>
+                  </>
+                );
+                return (
+                  <div key={row.id ?? ri} className="p-4">
+                    {to ? (
+                      <Link
+                        to={to}
+                        className="-m-1 flex items-center justify-between gap-3 rounded-lg p-1 transition-colors hover:bg-slate-50/70"
+                      >
+                        {body}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3">
+                        {body}
+                      </div>
+                    )}
+                    {(onView || onAdjust) && (
+                      <div className="mt-2 flex items-center justify-end gap-1.5">
+                        {onView && (
+                          <button
+                            type="button"
+                            onClick={() => onView(row)}
+                            aria-label="View byproducts"
+                            className="rounded-md p-2.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-[#1E4D96]"
+                          >
+                            <Eye size={16} />
+                          </button>
+                        )}
+                        {onAdjust && (
+                          <AdjustButton onClick={() => onAdjust(row)} />
+                        )}
+                      </div>
                     )}
                   </div>
-                  {columns.length > 1 && (
-                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
-                      {columns.slice(1).map((col) => (
-                        <div key={col.label} className="min-w-0">
-                          <dt className="text-slate-400">{col.label}</dt>
-                          <dd className="mt-0.5 truncate text-slate-700">
-                            {col.render(row)}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="hidden overflow-x-auto xl:block">
@@ -280,8 +334,8 @@ export default function InventoryTab({
                         )}
                       </th>
                     ))}
-                    {onView && (
-                      <th className="py-3 px-4 font-semibold text-right w-24">
+                    {(onView || onAdjust) && (
+                      <th className="py-3 px-4 font-semibold text-right w-28">
                         Actions
                       </th>
                     )}
@@ -298,18 +352,23 @@ export default function InventoryTab({
                           {col.render(row)}
                         </td>
                       ))}
-                      {onView && (
+                      {(onView || onAdjust) && (
                         <td className="py-3 px-4">
-                          <div className="flex items-center justify-end">
-                            <button
-                              type="button"
-                              onClick={() => onView(row)}
-                              aria-label="View byproducts"
-                              title="View byproducts"
-                              className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
-                            >
-                              <Eye size={15} />
-                            </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {onView && (
+                              <button
+                                type="button"
+                                onClick={() => onView(row)}
+                                aria-label="View byproducts"
+                                title="View byproducts"
+                                className="p-1.5 rounded-md text-slate-400 hover:text-[#1E4D96] hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40"
+                              >
+                                <Eye size={15} />
+                              </button>
+                            )}
+                            {onAdjust && (
+                              <AdjustButton onClick={() => onAdjust(row)} />
+                            )}
                           </div>
                         </td>
                       )}

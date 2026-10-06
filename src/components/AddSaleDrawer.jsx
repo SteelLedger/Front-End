@@ -54,7 +54,7 @@ function AddedChip({ line, stockGm, onQty, onRemove }) {
       }`}
       title={
         overBy
-          ? `${line.name} — exceeds stock by ${gmToKgDisplay(overBy)} kg (${gmToKgDisplay(stockGm)} kg available)`
+          ? `${line.name} exceeds stock by ${gmToKgDisplay(overBy)} kg (${gmToKgDisplay(stockGm)} kg available)`
           : line.name
       }
     >
@@ -228,8 +228,8 @@ function LineSection({
           {draftOverBy ? (
             <>
               <AlertTriangle size={12} />
-              Exceeds stock by {gmToKgDisplay(draftOverBy)} kg — in stock{" "}
-              {gmToKgDisplay(selected.totalQtyGm)} kg
+              Exceeds stock by {gmToKgDisplay(draftOverBy)} kg. Only{" "}
+              {gmToKgDisplay(selected.totalQtyGm)} kg in stock.
             </>
           ) : (
             <>
@@ -396,7 +396,7 @@ export default function AddSaleDrawer({
       isPartialLine(draft.byProducts)
     ) {
       error =
-        "Finish the line you're adding — it needs both an item and a quantity.";
+        "Finish the line you're adding. It needs both an item and a quantity.";
     } else if (itemCount === 0) {
       error = "Add at least one product or byproduct to this sale.";
     }

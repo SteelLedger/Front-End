@@ -24,6 +24,7 @@ import {
   getProductionById,
 } from "../services/apiServices";
 import { gmToKgDisplay } from "../utils/units";
+import { PRODUCTION_TYPES, productionTypeLabel } from "../utils/production";
 
 const PAGE_SIZE = 10;
 
@@ -32,6 +33,8 @@ function normalizeProduction(raw) {
     id: raw._id ?? raw.id,
     productName: raw.productName || "—",
     rawMaterialName: raw.rawMaterialName || "—",
+    // Null on runs recorded before the field existed.
+    productionType: raw.productionType ?? "",
     productSize: raw.productSize || "—",
     productQtyGm: raw.totalQty ?? 0,
     wasteQtyGm: raw.wasteQty ?? 0,
@@ -49,6 +52,10 @@ function normalizeProduction(raw) {
  *
  * Spacing is the caller's: the table sets it beside the product name, the
  * card sets it underneath.
+ *
+ * The vertical padding grows on phones so the tap target clears 30px, with a
+ * matching negative margin so the row height doesn't change — the same trick
+ * the icon buttons use.
  */
 function ByproductsToggle({ count, onClick, className = "" }) {
   if (count === 0) {
@@ -63,13 +70,23 @@ function ByproductsToggle({ count, onClick, className = "" }) {
       type="button"
       onClick={onClick}
       title="View byproducts"
-      className={`inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:bg-blue-50 hover:text-[#1E4D96] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${className}`}
+      className={`inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-2 -my-1.5 sm:my-0 sm:py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:bg-blue-50 hover:text-[#1E4D96] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/40 ${className}`}
     >
       <Boxes size={12} />
       {count == null
         ? "Byproducts"
         : `${count} byproduct${count === 1 ? "" : "s"}`}
     </button>
+  );
+}
+
+/** Single / Double / Triple Line — a dash for runs saved before the field. */
+function ProductionTypeBadge({ value }) {
+  if (!value) return <span className="text-slate-300">—</span>;
+  return (
+    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+      {productionTypeLabel(value)}
+    </span>
   );
 }
 
@@ -169,6 +186,7 @@ export default function ProductionRecords({
 
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [sortBy, setSortBy] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
@@ -249,6 +267,7 @@ export default function ProductionRecords({
     try {
       const res = await GetProductions({
         search: debounced,
+        productionType: typeFilter || undefined,
         fromDate: dateRange.fromDate,
         toDate: dateRange.toDate,
         sortBy: sortBy || undefined,
@@ -266,7 +285,7 @@ export default function ProductionRecords({
     } finally {
       setLoading(false);
     }
-  }, [debounced, dateRange, sortBy, sortOrder, page]);
+  }, [debounced, typeFilter, dateRange, sortBy, sortOrder, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -332,27 +351,49 @@ export default function ProductionRecords({
           <h2 className="text-base font-semibold text-slate-900">
             Production Records
           </h2>
-          <div className="relative w-full sm:w-72">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search product, size, raw material"
-              className="w-full pl-9 pr-8 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30 focus:border-[#1E4D96] transition-colors"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X size={14} />
-              </button>
-            )}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <select
+              value={typeFilter}
+              onChange={(e) => {
+                setTypeFilter(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Filter by production type"
+              className={`w-full sm:w-48 px-3 py-2.5 text-sm rounded-lg border bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30 focus:border-[#1E4D96] transition-colors ${
+                typeFilter
+                  ? "border-[#1E4D96]/40 text-slate-800"
+                  : "border-slate-200 text-slate-500"
+              }`}
+            >
+              <option value="">All production types</option>
+              {PRODUCTION_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <div className="relative w-full sm:w-72">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search product, size, raw material"
+                className="w-full pl-9 pr-8 py-2.5 text-sm rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1E4D96]/30 focus:border-[#1E4D96] transition-colors"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -375,8 +416,8 @@ export default function ProductionRecords({
           <div className="flex flex-col items-center justify-center text-center py-16 text-slate-400">
             <Inbox size={32} className="mb-2" />
             <p className="text-sm">
-              {debounced
-                ? "No productions match your search."
+              {debounced || typeFilter
+                ? "No productions match your filters."
                 : "No productions in this period. Click Add Product to cut your first one."}
             </p>
           </div>
@@ -394,11 +435,15 @@ export default function ProductionRecords({
                       <p className="mt-0.5 truncate text-xs text-slate-400">
                         from {r.rawMaterialName} · {fmtDate(r.productionDate)}
                       </p>
-                      <ByproductsToggle
-                        className="mt-1.5"
-                        count={countFor(r)}
-                        onClick={() => openByproducts(r)}
-                      />
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        {r.productionType && (
+                          <ProductionTypeBadge value={r.productionType} />
+                        )}
+                        <ByproductsToggle
+                          count={countFor(r)}
+                          onClick={() => openByproducts(r)}
+                        />
+                      </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <button
@@ -453,7 +498,7 @@ export default function ProductionRecords({
                       field="productName"
                       {...sortProps}
                     />
-
+                    <th className="py-3 px-4 font-semibold">Production Type</th>
                     <SortHeader
                       label="Size"
                       field="productSize"
@@ -490,7 +535,9 @@ export default function ProductionRecords({
                           />
                         </span>
                       </td>
-
+                      <td className="py-3 px-4">
+                        <ProductionTypeBadge value={r.productionType} />
+                      </td>
                       <td className="py-3 px-4 text-slate-600">
                         {r.productSize}
                       </td>

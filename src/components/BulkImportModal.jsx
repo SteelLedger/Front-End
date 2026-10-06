@@ -8,18 +8,15 @@ import {
   CheckCircle2,
   Trash2,
 } from "lucide-react";
-import { importParties } from "../services/apiServices";
 
 // The backend's own limit — checked here too so a 6000-row file is refused
-// before it is uploaded rather than after.
+// before it is uploaded rather than after. Both import endpoints share it.
 const MAX_ROWS = 5000;
-const SAMPLE_URL = "/parties-import-example.csv";
 
-const RULES = [
+// True of every CSV import, so callers only pass what's specific to theirs.
+const UNIVERSAL_RULES = [
   "First row must be the header.",
   `Max ${MAX_ROWS.toLocaleString("en-IN")} data rows per file.`,
-  "Duplicate name + partyType (case-insensitive) rows are skipped.",
-  "Leave optional cells empty; don't omit columns from the header if you use the full template.",
 ];
 
 /** "1.4 MB" / "812 B" — file sizes read better than a raw byte count. */
@@ -46,14 +43,29 @@ async function countDataRows(file) {
 
 /**
  * BulkImportModal
- * Upload a CSV of parties. The import runs asynchronously on the backend, so a
- * successful submit reports a queued job and the email it will land in — this
- * never shows per-row results, because there are none yet.
+ * Upload a CSV. The import runs asynchronously on the backend, so a successful
+ * submit reports a queued job and the email it will land in — this never shows
+ * per-row results, because there are none yet.
+ *
+ * Everything domain-specific arrives as a prop, because parties and product
+ * inventory differ only in the endpoint, the template and the wording: pass
+ * `importFn` (a function taking the File), plus the copy. `noun` is the plural
+ * thing being imported, used in the aria-label. `rules` holds only what is
+ * true of THAT import — the header row and the row cap are added here.
  *
  * Rendered only while open, so each open is a fresh mount and no file or
  * success panel carries over from last time.
  */
-export default function BulkImportModal({ onClose, onQueued }) {
+export default function BulkImportModal({
+  title,
+  subtitle,
+  noun,
+  importFn,
+  sampleUrl,
+  rules = [],
+  onClose,
+  onQueued,
+}) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -95,7 +107,7 @@ export default function BulkImportModal({ onClose, onQueued }) {
         setError("That file has a header but no data rows.");
       } else if (rows > MAX_ROWS) {
         setError(
-          `That file has about ${rows.toLocaleString("en-IN")} data rows — the limit is ${MAX_ROWS.toLocaleString("en-IN")}. Split it and import in parts.`,
+          `That file has about ${rows.toLocaleString("en-IN")} data rows, but the limit is ${MAX_ROWS.toLocaleString("en-IN")}. Split it and import in parts.`,
         );
       }
     } catch {
@@ -114,7 +126,7 @@ export default function BulkImportModal({ onClose, onQueued }) {
     if (!file || error || saving) return;
     setSaving(true);
     try {
-      const res = await importParties(file);
+      const res = await importFn(file);
       const body = res?.data ?? {};
       setQueued({
         message: body.message || "Import queued.",
@@ -142,17 +154,15 @@ export default function BulkImportModal({ onClose, onQueued }) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Bulk import parties"
+        aria-label={`Bulk import ${noun}`}
         className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
       >
         <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900">
-              Bulk Import Parties
+              {title}
             </h3>
-            <p className="text-xs text-slate-400">
-              Upload a CSV to add many parties at once
-            </p>
+            <p className="text-xs text-slate-400">{subtitle}</p>
           </div>
           <button
             type="button"
@@ -183,15 +193,14 @@ export default function BulkImportModal({ onClose, onQueued }) {
                 They won't appear in the list straight away
                 {job.recipientEmail ? (
                   <>
-                    {" "}
-                    — a summary goes to{" "}
+                    . A summary goes to{" "}
                     <span className="font-medium text-slate-700">
                       {job.recipientEmail}
                     </span>{" "}
                     when it finishes.
                   </>
                 ) : (
-                  " — you'll get a summary email when it finishes."
+                  ". You'll get a summary email when it finishes."
                 )}
               </p>
             </div>
@@ -268,7 +277,7 @@ export default function BulkImportModal({ onClose, onQueued }) {
                   Rules to remember
                 </p>
                 <ul className="space-y-1 text-xs text-slate-500">
-                  {RULES.map((rule) => (
+                  {[...UNIVERSAL_RULES, ...rules].map((rule) => (
                     <li key={rule} className="flex gap-1.5">
                       <span className="text-slate-300">•</span>
                       <span>{rule}</span>
@@ -278,7 +287,7 @@ export default function BulkImportModal({ onClose, onQueued }) {
               </div>
 
               <a
-                href={SAMPLE_URL}
+                href={sampleUrl}
                 download
                 className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-[#1E4D96] hover:underline"
               >

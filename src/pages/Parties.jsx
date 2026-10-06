@@ -2,11 +2,8 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { toast } from "react-toastify";
 import {
   Search,
-  Printer,
   FileSpreadsheet,
   Pencil,
-  Phone,
-  Clock,
   X,
   ArrowUpRight,
   ArrowDownLeft,
@@ -47,6 +44,7 @@ import {
   updateParty,
   DeleteParty,
   GetTransactions,
+  importParties,
 } from "../services/apiServices";
 
 const PAGE_SIZE = 10;
@@ -285,18 +283,41 @@ function extractTxns(res) {
   return { list: Array.isArray(list) ? list : [], total: Number(total) || 0 };
 }
 
+// The width at which the list and the detail panel sit side by side (Tailwind's
+// lg). Below it, the detail panel is a modal.
+const SIDE_BY_SIDE = "(min-width: 1024px)";
+
 /* ------------------------------- Small UI bits ------------------------------- */
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value, valueColor }) {
+/**
+ * Below `sm` the stats strip is just Customers and Suppliers, two across
+ * (`hideOnPhone` drops Total Parties there), with a tighter card and the label
+ * minus "Total" (`shortLabel`). From `sm` up it's the original three cards.
+ */
+function StatCard({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  shortLabel,
+  value,
+  valueColor,
+  hideOnPhone = false,
+}) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div
+      className={`${hideOnPhone ? "hidden sm:flex" : "flex"} bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-4 items-center gap-2.5 sm:gap-3`}
+    >
       <span
-        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
+        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
-        <Icon size={18} />
+        <Icon size={18} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
       </span>
-      <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
+      <div className="min-w-0 max-w-full">
+        <p className="truncate text-[11px] text-slate-400 sm:text-xs">
+          <span className="sm:hidden">{shortLabel ?? label}</span>
+          <span className="hidden sm:inline">{label}</span>
+        </p>
         <p
           className={`text-lg font-semibold truncate ${valueColor || "text-slate-900"}`}
         >
@@ -384,6 +405,11 @@ function Parties() {
   });
 
   const [selectedId, setSelectedId] = useState(null);
+  // Below lg the detail panel is a modal over the list, opened by tapping a
+  // party. Kept apart from `selectedId`, which is auto-set to the first party
+  // on load — that must not pop the modal open by itself.
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const detailPanelRef = useRef(null);
 
   // Drawer / form state
   const [modalOpen, setModalOpen] = useState(false);
@@ -412,7 +438,6 @@ function Parties() {
   // { fromDate, toDate } as DD/MM/YYYY — opens on the current month.
   const [txnRange, setTxnRange] = useState(defaultDateRange);
 
-  const detailRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const txnTotalPages = Math.max(1, Math.ceil(txnTotal / TXN_PAGE_SIZE));
@@ -522,6 +547,40 @@ function Parties() {
 
   const selectedParty = parties.find((p) => p.id === selectedId) || null;
 
+  // While the mobile detail modal is open: hold the page still behind it, and
+  // close it if the window grows into the side-by-side layout — otherwise the
+  // page would stay scroll-locked behind a modal that is no longer shown.
+  useEffect(() => {
+    if (!mobileDetailOpen) return;
+    const mq = window.matchMedia(SIDE_BY_SIDE);
+    const onChange = (e) => {
+      if (e.matches) setMobileDetailOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      mq.removeEventListener("change", onChange);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [mobileDetailOpen]);
+
+  // Escape closes it — unless something opened from inside it is on top and
+  // takes that Escape for itself: a dialog (notes, edit, confirm), or a popup
+  // such as the date filter's, which marks its trigger aria-expanded.
+  useEffect(() => {
+    if (!mobileDetailOpen || notesOpen || modalOpen || confirmState) return;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (detailPanelRef.current?.querySelector('[aria-expanded="true"]')) {
+        return;
+      }
+      setMobileDetailOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mobileDetailOpen, notesOpen, modalOpen, confirmState]);
+
   // Client-side number search over the currently loaded page (no search param).
   const filteredTransactions = useMemo(() => {
     if (!txnSearch.trim()) return txns;
@@ -537,18 +596,10 @@ function Parties() {
     setTxnSearch("");
     setTxnSearchOpen(false);
     setNotesOpen(false);
-    requestAnimationFrame(() => {
-      if (window.innerWidth < 1024 && detailRef.current) {
-        const reduceMotion =
-          window.matchMedia &&
-          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        detailRef.current.scrollIntoView({
-          behavior: reduceMotion ? "auto" : "smooth",
-          block: "start",
-        });
-      }
-    });
+    if (!window.matchMedia(SIDE_BY_SIDE).matches) setMobileDetailOpen(true);
   }
+
+  const closeMobileDetail = () => setMobileDetailOpen(false);
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -634,10 +685,6 @@ function Parties() {
     }
   }
 
-  function handlePrint() {
-    window.print();
-  }
-
   function handleExportCSV() {
     if (!selectedParty) return;
     const header = ["Type", "Number", "Date", "Total", "Balance"];
@@ -664,19 +711,21 @@ function Parties() {
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
         {/* Stats strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-2 mb-4 sm:grid-cols-3 sm:gap-3 sm:mb-6">
           <StatCard
             icon={Users}
             iconBg="bg-blue-50"
             iconColor="text-blue-600"
             label="Total Parties"
             value={String(summary.totalParties ?? total)}
+            hideOnPhone
           />
           <StatCard
             icon={UserRound}
             iconBg="bg-blue-50"
             iconColor="text-[#1E4D96]"
             label="Total Customers"
+            shortLabel="Customers"
             value={String(summary.totalCustomers ?? 0)}
           />
           <StatCard
@@ -684,6 +733,7 @@ function Parties() {
             iconBg="bg-violet-50"
             iconColor="text-violet-600"
             label="Total Suppliers"
+            shortLabel="Suppliers"
             value={String(summary.totalSuppliers ?? 0)}
           />
         </div>
@@ -862,11 +912,31 @@ function Parties() {
             )}
           </div>
 
-          {/* Detail panel */}
-          <div ref={detailRef} className="flex-1 min-w-0 flex flex-col">
+          {/* Detail panel. Beside the list from lg up; below that the same
+              panel opens as a modal over the list when a party is tapped. All
+              the modal styling is undone at lg, so desktop is unchanged. */}
+          <div
+            className={`${
+              mobileDetailOpen
+                ? "fixed inset-0 z-50 flex items-center justify-center p-4"
+                : "hidden"
+            } lg:static lg:z-auto lg:flex lg:flex-1 lg:min-w-0 lg:p-0`}
+          >
+            <div
+              className="absolute inset-0 bg-slate-900/40 lg:hidden"
+              onClick={closeMobileDetail}
+              aria-hidden="true"
+            />
+            <div
+              ref={detailPanelRef}
+              role={mobileDetailOpen ? "dialog" : undefined}
+              aria-modal={mobileDetailOpen || undefined}
+              aria-label={mobileDetailOpen ? selectedParty?.name : undefined}
+              className="relative flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl lg:max-h-none lg:max-w-none lg:flex-1 lg:min-w-0 lg:overflow-visible lg:rounded-none lg:shadow-none"
+            >
             {selectedParty ? (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-100">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-100 shrink-0">
                   <div className="flex items-center gap-3 min-w-0">
                     <span
                       className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-semibold shrink-0"
@@ -918,22 +988,19 @@ function Parties() {
                     >
                       <Info size={16} />
                     </IconButton>
-                    {/* <IconButton
-                      title="WhatsApp"
-                      colorClass="bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                    <button
+                      type="button"
+                      onClick={closeMobileDetail}
+                      aria-label="Close"
+                      className="-mr-2 ml-1 rounded-md p-2 text-slate-400 transition-colors hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E4D96]/50 lg:hidden"
                     >
-                      <Phone size={16} />
-                    </IconButton> */}
-                    {/* <IconButton
-                      title="Set reminder"
-                      colorClass="bg-orange-50 text-orange-600 hover:bg-orange-100"
-                    >
-                      <Clock size={16} />
-                    </IconButton> */}
+                      <X size={20} />
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex-1 flex flex-col p-4 sm:p-5">
+                {/* Scrolls inside the modal; plain flow again from lg. */}
+                <div className="flex-1 flex flex-col p-4 sm:p-5 min-h-0 overflow-y-auto overscroll-contain lg:min-h-auto lg:overflow-visible">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <h3 className="text-base font-semibold text-slate-900">
                       Transactions
@@ -962,9 +1029,6 @@ function Parties() {
                       >
                         <Search size={16} />
                       </HeaderIconButton>
-                      {/* <HeaderIconButton title="Print" onClick={handlePrint}>
-                        <Printer size={16} />
-                      </HeaderIconButton> */}
                       <HeaderIconButton
                         title="Export CSV"
                         onClick={handleExportCSV}
@@ -1181,12 +1245,22 @@ function Parties() {
                 </p>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
 
       {importOpen && (
         <BulkImportModal
+          title="Bulk Import Parties"
+          subtitle="Upload a CSV to add many parties at once"
+          noun="parties"
+          importFn={importParties}
+          sampleUrl="/parties-import-example.csv"
+          rules={[
+            "Duplicate name + partyType (case-insensitive) rows are skipped.",
+            "Leave optional cells empty; don't omit columns from the header if you use the full template.",
+          ]}
           onClose={() => {
             setImportOpen(false);
             // The job runs off a queue, so rows rarely land before this — but

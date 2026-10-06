@@ -4,6 +4,9 @@ import { clearSession, getDisplayUser, isAdmin } from "../utils/auth";
 import { PageHeaderContext } from "../context/pageHeader";
 import DateFilterBar from "../components/DateFilterBar";
 import ChangePasswordModal from "../components/ChangePasswordModal";
+import OrganizationSwitcherModal from "../components/OrganizationSwitcherModal";
+import { useOrganization } from "../context/organization";
+import { orgName } from "../utils/organization";
 import { GetSales } from "../services/apiServices";
 import { extractSales } from "../utils/sales";
 
@@ -69,8 +72,26 @@ const PAGE_SUBTITLES = {
   "/reports": "Insights into your business performance",
   "/members": "Invite teammates and manage what they can access",
   "/action-logs": "Who changed what, across the last 30 days",
-  "/settings": "Your account details and sign-in security",
+  "/settings":
+    "Your account, sign-in security, organization, and system status",
 };
+
+/**
+ * Pages with nothing to create. Everywhere else the topbar falls back to a
+ * "New Sale" quick action when a page registers none of its own — useful on
+ * the dashboard and the stock screens, but plainly wrong sitting above your
+ * account settings or a read-only audit trail.
+ */
+const NO_QUICK_ACTION = ["/settings", "/reports", "/members", "/action-logs"];
+
+/**
+ * The read-only drill-downs — the history behind one inventory row. Listed
+ * separately because a prefix match would also strip the action from the
+ * `/inventory` and `/product-inventory` lists above them, where a quick sale
+ * off the stock you're looking at is a fair shortcut.
+ */
+const isHistoryRoute = (pathname) =>
+  /^\/(inventory|product-inventory)\/[^/]+$/.test(pathname);
 
 /**
  * Nav matching. A detail route (`/inventory/<id>`) has to keep lighting up its
@@ -105,8 +126,9 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  // Reachable from any screen via the user menu, so the modal lives here.
+  // Reachable from any screen via the user menu, so the modals live here.
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [orgSwitcherOpen, setOrgSwitcherOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const userMenuRef = useRef(null);
@@ -129,6 +151,12 @@ export default function Layout() {
 
   const admin = useMemo(() => isAdmin(), []);
 
+  // The tenant everything on screen belongs to. Resolved by
+  // OrganizationProvider before this layout ever mounts, so it's always set.
+  const { activeOrg, activeOrgId, organizations } = useOrganization();
+  // Shown as the sidebar wordmark in place of the product name.
+  const orgLabel = orgName(activeOrg);
+
   // Nav minus whatever this role can't reach. Dropping a section that empties
   // out keeps its heading from hanging over nothing.
   const navSections = useMemo(
@@ -147,7 +175,8 @@ export default function Layout() {
    *
    * Admin-only: a member never sees the number, so never fetches it. Refreshed
    * on navigation — recording a sale changes it, and a nav badge that only
-   * updated on a full page load would sit there wrong.
+   * updated on a full page load would sit there wrong — and on an organization
+   * switch, since the count belongs to one tenant.
    */
   const [salesCount, setSalesCount] = useState(0);
   useEffect(() => {
@@ -164,7 +193,7 @@ export default function Layout() {
     return () => {
       alive = false;
     };
-  }, [admin, location.pathname]);
+  }, [admin, location.pathname, activeOrgId]);
 
   const badgeCounts = { sales: salesCount };
 
@@ -195,6 +224,9 @@ export default function Layout() {
 
   const activeLabel = getActiveLabel(location.pathname);
   const subtitle = getSubtitle(location.pathname);
+  const suppressQuickAction =
+    NO_QUICK_ACTION.some((p) => matchesPath(location.pathname, p)) ||
+    isHistoryRoute(location.pathname);
 
   // Controls the current page hands up to the topbar (see context/pageHeader).
   const [header, setHeader] = useState({});
@@ -226,20 +258,29 @@ export default function Layout() {
             collapsed ? "justify-center px-0" : "justify-between px-4",
           ].join(" ")}
         >
-          <div className="flex items-center gap-2.5 min-w-0">
+          {/*
+            The wordmark IS the organization: switching tenants changes it, so
+            which one you're in is readable at a glance without a second row
+            under the logo saying the same thing. The name can be long and the
+            sidebar is 224px, so it truncates and carries a title.
+          */}
+          <div className="flex items-center gap-2.5 min-w-0" title={orgLabel}>
             <div className="w-8 h-8 min-w-[2rem] rounded-lg bg-[#1E4D96] flex items-center justify-center flex-shrink-0">
               <LedgrLogo />
             </div>
             {!collapsed && (
-              <span className="text-[19px] font-bold text-white tracking-tight whitespace-nowrap select-none">
-                Ledgr<span className="text-blue-400">.</span>
+              <span className="truncate text-[17px] font-bold text-white tracking-tight select-none">
+                {orgLabel}
               </span>
             )}
           </div>
           {!collapsed && (
             <button
               onClick={() => setCollapsed(true)}
-              className="hidden w-7 h-7 rounded-md bg-white/10 hover:bg-white/20 lg:flex items-center justify-center text-blue-300 transition-colors"
+              /* shrink-0 is load-bearing: the wordmark is now an organization
+                 name of any length, and without it a long one squeezes this
+                 button down to a clipped sliver. */
+              className="hidden w-7 h-7 ml-2 shrink-0 rounded-md bg-white/10 hover:bg-white/20 lg:flex items-center justify-center text-blue-300 transition-colors"
               aria-label="Collapse sidebar"
             >
               <ChevronLeftIcon />
@@ -397,12 +438,34 @@ export default function Layout() {
           {userMenuOpen && (
             <div
               className={[
-                "absolute z-50 rounded-lg bg-white border border-slate-200 shadow-xl py-1",
+                "absolute z-50 max-h-[70vh] overflow-y-auto rounded-lg bg-white border border-slate-200 shadow-xl py-1",
                 collapsed
-                  ? "left-full bottom-2 ml-2 w-40"
+                  ? "left-full bottom-2 ml-2 w-56"
                   : "bottom-full left-2 right-2 mb-2",
               ].join(" ")}
             >
+              {organizations.length > 1 && (
+                <>
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      setOrgSwitcherOpen(true);
+                    }}
+                    className="w-full flex items-start gap-2 px-3 py-2 text-[15px] font-medium text-slate-700 hover:bg-blue-50 transition-colors"
+                  >
+                    <span className="mt-0.5 shrink-0">
+                      <BuildingIcon />
+                    </span>
+                    <span className="min-w-0 flex-1 text-left">
+                      <span className="block">Switch organization</span>
+                      <span className="block truncate text-[12px] font-normal text-slate-400">
+                        {orgName(activeOrg)}
+                      </span>
+                    </span>
+                  </button>
+                  <div className="my-1 border-t border-slate-100" />
+                </>
+              )}
               <button
                 onClick={() => {
                   setUserMenuOpen(false);
@@ -498,21 +561,28 @@ export default function Layout() {
                 {header.secondaryLabel}
               </button>
             )}
-            <button
-              onClick={header.onAction ?? (() => handleNav("/sales"))}
-              aria-label={header.actionLabel ?? "New Sale"}
-              title={header.actionLabel ?? "New Sale"}
-              className="flex h-10 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#1E4D96] px-3 text-[14px] font-semibold text-white transition-colors hover:bg-[#1A3F7A]"
-            >
-              <span>{header.actionLabel ?? "New Sale"}</span>
-            </button>
+            {(header.onAction || !suppressQuickAction) && (
+              <button
+                onClick={header.onAction ?? (() => handleNav("/sales"))}
+                aria-label={header.actionLabel ?? "New Sale"}
+                title={header.actionLabel ?? "New Sale"}
+                className="flex h-10 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#1E4D96] px-3 text-[14px] font-semibold text-white transition-colors hover:bg-[#1A3F7A]"
+              >
+                <span>{header.actionLabel ?? "New Sale"}</span>
+              </button>
+            )}
           </div>
         </header>
 
         {/* Scrollable content — each page renders here */}
+        {/*
+          Keyed on the organization: switching tenants remounts whatever page
+          is here, so its data is refetched for the new one rather than left
+          showing the previous tenant's rows.
+        */}
         <main className="flex-1 overflow-y-auto">
           <PageHeaderContext.Provider value={registerHeader}>
-            <Outlet />
+            <Outlet key={activeOrgId} />
           </PageHeaderContext.Provider>
         </main>
       </div>
@@ -520,6 +590,11 @@ export default function Layout() {
       <ChangePasswordModal
         open={passwordOpen}
         onClose={() => setPasswordOpen(false)}
+      />
+
+      <OrganizationSwitcherModal
+        open={orgSwitcherOpen}
+        onClose={() => setOrgSwitcherOpen(false)}
       />
     </div>
   );
@@ -742,6 +817,23 @@ function MenuIcon() {
       height="18"
     >
       <path d="M3 5h14M3 10h14M3 15h14" />
+    </svg>
+  );
+}
+// An office block — the organization/tenant, not a building in the data.
+function BuildingIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      width="16"
+      height="16"
+    >
+      <path d="M3 17h14M4.5 17V4a1 1 0 011-1h5a1 1 0 011 1v13" />
+      <path d="M11.5 17V8h4a1 1 0 011 1v8" />
+      <path d="M7 6h1.5M7 9h1.5M7 12h1.5M14 11h.5M14 14h.5" />
     </svg>
   );
 }

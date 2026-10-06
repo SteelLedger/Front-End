@@ -14,7 +14,12 @@ import {
   ChevronRight,
 } from "lucide-react";
 import AddPurchase from "../components/AddPurchase";
-import { GetRawMaterials } from "../services/apiServices";
+import AdjustButton from "../components/AdjustButton";
+import StockAdjustmentModal from "../components/StockAdjustmentModal";
+import {
+  GetRawMaterials,
+  adjustRawMaterialStock,
+} from "../services/apiServices";
 import { gmToKgDisplay } from "../utils/units";
 
 const PAGE_SIZE = 10;
@@ -55,16 +60,23 @@ function extractRawMaterials(res) {
 
 const dash = (v) => (v && String(v).trim() ? v : "—");
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
+/**
+ * Two across on phones, so below `sm` the card tightens; `wide` spans both
+ * columns there, so three cards read as one full row plus a pair rather than
+ * leaving a gap. From `sm` up it's the original three-across row.
+ */
+function StatCard({ icon: Icon, iconBg, iconColor, label, value, wide = false }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div
+      className={`${wide ? "col-span-2 sm:col-span-1 " : ""}bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3`}
+    >
       <span
-        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
+        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
-        <Icon size={18} />
+        <Icon size={18} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
+        <p className="text-[11px] text-slate-400 sm:text-xs">{label}</p>
         <p className="text-lg font-semibold truncate text-slate-900">{value}</p>
       </div>
     </div>
@@ -121,6 +133,9 @@ function SortHeader({
 
 export default function Inventory() {
   const [addOpen, setAddOpen] = useState(false);
+  // The row whose stock is being corrected by hand, or null. Holding the row
+  // (not just its id) is what lets the modal show the name and current stock.
+  const [adjustRow, setAdjustRow] = useState(null);
 
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({});
@@ -190,13 +205,14 @@ export default function Inventory() {
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
         {/* Stats strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-2 mb-4 sm:grid-cols-3 sm:gap-3 sm:mb-6">
           <StatCard
             icon={Boxes}
             iconBg="bg-blue-50"
             iconColor="text-blue-600"
             label="Total Quantity (kg)"
             value={gmToKgDisplay(summary.totalQuantity || 0)}
+            wide
           />
           <StatCard
             icon={PackageCheck}
@@ -294,40 +310,48 @@ export default function Inventory() {
               {/* Phones get cards — the table needs 720px. */}
               <div className="divide-y divide-slate-100 xl:hidden">
                 {items.map((g) => (
-                  <Link
-                    key={g.id}
-                    to={`/inventory/${g.id}`}
-                    className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-slate-50/70"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-[#1E4D96]">
-                        {dash(g.rawMaterialName)}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        Size {dash(g.size)} · Point {dash(g.point)} · Grade{" "}
-                        {dash(g.grade)}
-                      </p>
+                  <div key={g.id} className="p-4">
+                    {/* The Adjust button can't sit inside the Link — nesting
+                        a button in an anchor would make one swallow the other. */}
+                    <Link
+                      to={`/inventory/${g.id}`}
+                      className="-m-1 flex items-center justify-between gap-3 rounded-lg p-1 transition-colors hover:bg-slate-50/70"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-[#1E4D96]">
+                          {dash(g.rawMaterialName)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          Size {dash(g.size)} · Point {dash(g.point)} · Grade{" "}
+                          {dash(g.grade)}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-semibold text-slate-900">
+                          {gmToKgDisplay(g.totalQty)} kg
+                        </p>
+                        <span
+                          className={`mt-1 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            g.status === "in_stock"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-rose-50 text-rose-700"
+                          }`}
+                        >
+                          {g.status === "in_stock"
+                            ? "In stock"
+                            : "Out of stock"}
+                        </span>
+                      </div>
+                    </Link>
+                    <div className="mt-2 flex justify-end">
+                      <AdjustButton onClick={() => setAdjustRow(g)} />
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className="font-semibold text-slate-900">
-                        {gmToKgDisplay(g.totalQty)} kg
-                      </p>
-                      <span
-                        className={`mt-1 inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                          g.status === "in_stock"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-rose-50 text-rose-700"
-                        }`}
-                      >
-                        {g.status === "in_stock" ? "In stock" : "Out of stock"}
-                      </span>
-                    </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
 
               <div className="hidden overflow-x-auto xl:block">
-                <table className="w-full min-w-[720px] text-sm table-fixed">
+                <table className="w-full min-w-[820px] text-sm table-fixed">
                   <thead>
                     <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
                       <SortHeader
@@ -344,6 +368,9 @@ export default function Inventory() {
                         {...sortProps}
                       />
                       <th className="py-3 px-4 font-semibold">Status</th>
+                      <th className="py-3 px-4 font-semibold text-right w-28">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -382,6 +409,11 @@ export default function Inventory() {
                               ? "In stock"
                               : "Out of stock"}
                           </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center justify-end">
+                            <AdjustButton onClick={() => setAdjustRow(g)} />
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -427,6 +459,15 @@ export default function Inventory() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onCreated={fetchRawMaterials}
+      />
+
+      <StockAdjustmentModal
+        open={!!adjustRow}
+        itemName={adjustRow?.rawMaterialName}
+        currentQtyGm={adjustRow?.totalQty ?? 0}
+        onSave={(payload) => adjustRawMaterialStock(adjustRow.id, payload)}
+        onSaved={fetchRawMaterials}
+        onClose={() => setAdjustRow(null)}
       />
     </div>
   );

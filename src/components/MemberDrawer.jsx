@@ -225,7 +225,7 @@ export default function MemberDrawer({
               {lockRole && (
                 <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-400">
                   <ShieldCheck size={13} className="mt-0.5 shrink-0" />
-                  You can't change your own role — ask another admin to do it.
+                  You can't change your own role. Ask another admin to do it.
                 </p>
               )}
             </div>

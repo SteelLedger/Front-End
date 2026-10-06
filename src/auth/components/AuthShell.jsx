@@ -48,7 +48,7 @@ export default function AuthShell({ children }) {
             Run your business from one place
           </h2>
           <p className="mb-12 max-w-[340px] text-center text-[15px] leading-relaxed text-[#A3BEF0]">
-            Inventory tracking, smart invoicing, and custom calculations — built
+            Inventory tracking, smart invoicing, and custom calculations, built
             for Indian businesses.
           </p>
 

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Calendar, ChevronDown, X } from "lucide-react";
+import { Calendar, X } from "lucide-react";
 import FilterSelect from "./FilterSelect";
 import DateRangeFilter from "./DateRangeFilter";
 import MenuPopover from "./MenuPopover";
@@ -24,6 +24,9 @@ const PRESETS = PERIOD_OPTIONS.filter((o) => o.value !== "custom");
  *
  * `onChange` fires from user actions only, never from an effect, so an inline
  * arrow in the parent is safe.
+ *
+ * Phones (below `sm`) get a calendar icon instead of the chips, opening a
+ * panel with just From and To — the presets are tablet-and-up only.
  */
 export default function DateFilterBar({
   onChange,
@@ -38,7 +41,7 @@ export default function DateFilterBar({
   const [period, setPeriod] = useState(defaultPeriod);
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
-  // Phones get one chip instead of two — see the sheet at the bottom.
+  // Phones get one icon button instead of the two chips — see below.
   const [sheetOpen, setSheetOpen] = useState(false);
   const chipRef = useRef(null);
 
@@ -82,25 +85,27 @@ export default function DateFilterBar({
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      {/* Phones: one chip. Two would wrap out of the topbar's height. */}
+      {/* Phones: a calendar icon alone — the topbar has no room for a label.
+          It names the range for screen readers and on long-press, and a dot
+          marks a range moved off the default, since nothing else shows it. */}
       <button
         ref={chipRef}
         type="button"
         onClick={() => setSheetOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={sheetOpen}
-        className={`inline-flex max-w-[7.5rem] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors sm:hidden ${
+        aria-label={`Date range: ${chipLabel}`}
+        title={chipLabel}
+        className={`relative inline-flex items-center justify-center rounded-lg border p-2 transition-colors sm:hidden ${
           active
             ? "border-[#BBD0EC] bg-[#EEF3FB] text-[#1E4D96]"
-            : "border-slate-200 bg-white text-slate-700"
+            : "border-slate-200 bg-white text-slate-500"
         }`}
       >
-        <Calendar
-          size={14}
-          className={`shrink-0 ${active ? "text-[#1E4D96]/70" : "text-slate-400"}`}
-        />
-        <span className="truncate font-semibold">{chipLabel}</span>
-        <ChevronDown size={14} className="shrink-0 text-slate-400" />
+        <Calendar size={18} />
+        {dirty && (
+          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-[#1E4D96] ring-2 ring-white" />
+        )}
       </button>
 
       <MenuPopover
@@ -111,27 +116,7 @@ export default function DateFilterBar({
         width={288}
         className="p-3"
       >
-        <div className="grid grid-cols-2 gap-1">
-          {PRESETS.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                changePeriod(o.value);
-                setSheetOpen(false);
-              }}
-              className={`rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
-                o.value === period
-                  ? "bg-[#EEF3FB] font-semibold text-[#1E4D96]"
-                  : "text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2.5">
+        <div className="grid grid-cols-2 gap-2">
           <label className="block min-w-0">
             <span className="mb-1 block text-[11px] font-medium text-slate-500">
               From

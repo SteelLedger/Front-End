@@ -1,3 +1,5 @@
+import { clearActiveOrg } from "./organization";
+
 // Decode a JWT payload (no verification — just to read claims like email/role).
 export function decodeToken(token) {
   if (!token) return null;
@@ -41,9 +43,12 @@ export function isTokenExpired(token, skewMs = CLOCK_SKEW_MS) {
 }
 
 // Drop the stored session. Safe to call repeatedly.
+// The active organization goes with it: the next account to sign in here may
+// not have access to it, and a fresh login is meant to land on the first one.
 export function clearSession() {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
+  clearActiveOrg();
 }
 
 // Initials from a name ("Raj Kumar" -> "RK") or email ("admin@x.com" -> "AD").
@@ -81,6 +86,35 @@ export function getCurrentUser() {
     email: (user.email || "").toLowerCase(),
     role: (user.role || "").toLowerCase(),
   };
+}
+
+/**
+ * Is this session still on the temporary password an admin issued?
+ *
+ * The login payload carries `isPasswordReset`, and only an explicit `false`
+ * forces the change. A session that predates the flag — or any payload that
+ * simply omits it — must read as "nothing to do" rather than locking the user
+ * out of the app behind a screen they can't dismiss.
+ */
+export function mustSetPassword() {
+  return readSession().isPasswordReset === false;
+}
+
+/**
+ * Record that the password has been set, so the gate stops firing without a
+ * fresh login. Called from wherever a password change succeeds.
+ */
+export function markPasswordReset() {
+  let stored = {};
+  try {
+    stored = JSON.parse(localStorage.getItem("user")) || {};
+  } catch {
+    // Unparseable stored user — the token's claims still supply email/role.
+  }
+  localStorage.setItem(
+    "user",
+    JSON.stringify({ ...stored, isPasswordReset: true }),
+  );
 }
 
 /** Admin-only screens (member management) gate on this. */

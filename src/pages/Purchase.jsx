@@ -20,7 +20,7 @@ import { usePageHeader } from "../context/pageHeader";
 import { defaultDateRange } from "../utils/dateRange";
 import AddPartyDrawer from "../components/AddPartyDrawer";
 import ConfirmDialog from "../components/ConfirmDialog";
-import PurchaseBillModal from "../components/PurchaseBillModal";
+import PurchaseBillModal, { TypeBadge } from "../components/PurchaseBillModal";
 import { emptyPartyForm, buildPartyPayload } from "../utils/party";
 import { gmToKgDisplay } from "../utils/units";
 import {
@@ -73,16 +73,37 @@ function PurchaseLines({ lines = [], onOpen }) {
   );
 }
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value }) {
+/** One badge per distinct type on the bill — lines can mix Raw Material and
+ *  Circle, but most bills are a single type. */
+function PurchaseTypes({ lines = [] }) {
+  const types = [...new Set(lines.map((l) => l.itemType))];
+  if (!types.length) return <span className="text-slate-400">—</span>;
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-1">
+      {types.map((t) => (
+        <TypeBadge key={t} line={{ itemType: t }} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Two across on phones, so below `sm` the card tightens and the label drops
+ * "Total" (`shortLabel`) to fit beside the icon; from `sm` up it's unchanged.
+ */
+function StatCard({ icon: Icon, iconBg, iconColor, label, shortLabel, value }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
       <span
-        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
+        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
-        <Icon size={18} />
+        <Icon size={18} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
+        <p className="text-[11px] text-slate-400 sm:text-xs">
+          <span className="sm:hidden">{shortLabel ?? label}</span>
+          <span className="hidden sm:inline">{label}</span>
+        </p>
         <p className="text-lg font-semibold truncate text-slate-900">{value}</p>
       </div>
     </div>
@@ -376,12 +397,13 @@ export default function Purchase() {
     <div className="min-h-full bg-[#F7F8FB] p-4 lg:p-5 space-y-4 lg:space-y-5">
       <div className="max-w-[1400px] mx-auto">
         {/* Stats strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4 sm:gap-3 sm:mb-6">
           <StatCard
             icon={Layers}
             iconBg="bg-blue-50"
             iconColor="text-blue-600"
             label="Total Purchases"
+            shortLabel="Purchases"
             value={String(total)}
           />
           <StatCard
@@ -389,6 +411,7 @@ export default function Purchase() {
             iconBg="bg-emerald-50"
             iconColor="text-emerald-600"
             label="Total Quantity (kg)"
+            shortLabel="Quantity (kg)"
             value={gmToKgDisplay(summary.totalQuantity || 0)}
           />
           <StatCard
@@ -396,6 +419,7 @@ export default function Purchase() {
             iconBg="bg-amber-50"
             iconColor="text-amber-600"
             label="Total Bundles"
+            shortLabel="Bundles"
             value={String(summary.totalBundles ?? 0)}
           />
           <StatCard
@@ -502,11 +526,12 @@ export default function Purchase() {
                         </button>
                       </div>
                     </div>
-                    <div className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
                       <PurchaseLines
                         lines={p.lineItems}
                         onOpen={() => setOpenBill(p)}
                       />
+                      <PurchaseTypes lines={p.lineItems} />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                       <span>
@@ -537,6 +562,7 @@ export default function Purchase() {
                       <th className="py-3 px-4 font-semibold">
                         Raw Material Sheet
                       </th>
+                      <th className="py-3 px-4 font-semibold">Type</th>
 
                       <SortHeader
                         label="Total Quantity"
@@ -576,6 +602,9 @@ export default function Purchase() {
                             lines={p.lineItems}
                             onOpen={() => setOpenBill(p)}
                           />
+                        </td>
+                        <td className="py-3 px-4">
+                          <PurchaseTypes lines={p.lineItems} />
                         </td>
 
                         <td className="py-3 px-4 text-right font-medium text-slate-800 whitespace-nowrap">
