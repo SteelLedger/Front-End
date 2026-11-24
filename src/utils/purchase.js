@@ -11,7 +11,6 @@
 // instead (the backend also echoes the name back as `productName` there).
 
 import { todayISO, isoToDMY, dmyToISO } from "./party";
-import { numericText } from "./text";
 import { kgToGm, gmToKg } from "./units";
 
 /**
@@ -106,11 +105,11 @@ export const LINE_FIELDS = [
 ];
 
 /**
- * Size, quantity and bundles are amounts: a 0, a negative or a stray letter is
- * not a line the backend can store. Point and grade are labels ("120p", "M5",
- * "M5 OUT"), so they only have to be present.
+ * Quantity and bundles are amounts: a 0, a negative or a stray letter is not a
+ * line the backend can store. Size, point and grade are labels ("12x6",
+ * "120p", "M5 OUT"), so they only have to be present.
  */
-export const AMOUNT_FIELDS = ["size", "quantity", "bundles"];
+export const AMOUNT_FIELDS = ["quantity", "bundles"];
 
 /** How each field is named inside a validation message. */
 const FIELD_LABELS = {
@@ -178,8 +177,7 @@ export function buildPurchasePayload(f) {
       // Required by the API; defaulted so a row that somehow lost it still
       // saves as raw material rather than 400ing.
       itemType: l.itemType || DEFAULT_ITEM_TYPE,
-      // Tidied so a half-typed "10." goes over the wire as "10".
-      size: numericText(l.size),
+      size: text(l.size),
       point: text(l.point),
       grade: text(l.grade),
       quantity: kgToGm(l.quantity),

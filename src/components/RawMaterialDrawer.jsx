@@ -15,7 +15,7 @@ import {
   lineTotals,
   lineLabel,
 } from "../utils/purchase";
-import { joinWithAnd, sentenceCase, decimalInput } from "../utils/text";
+import { joinWithAnd, sentenceCase } from "../utils/text";
 import { useFocusTrap, useEnterAdvance } from "../utils/keyboard";
 
 function Field({ label, required, info, children }) {
@@ -34,17 +34,13 @@ function Field({ label, required, info, children }) {
 // Bill-level required fields (the line items validate separately).
 const REQUIRED = ["supplier", "invoiceNumber", "date"];
 
-// Point and grade are labels ("120p", "M5"): letters and numbers, nothing else.
-// Size is a measurement and takes a decimal point — see `decimalInput`.
+// Point is a label ("120p"): letters and numbers, nothing else.
 const alnum = (v) => v.replace(/[^a-zA-Z0-9]/g, "");
-// Grade may also carry a qualifier after a space ("M5 OUT"). Runs of spaces
-// collapse to one and a leading space is dropped; the trailing one has to
-// survive while the next word is typed — the payload trims it on save.
-const gradeText = (v) =>
-  v
-    .replace(/[^a-zA-Z0-9 ]/g, "")
-    .replace(/ {2,}/g, " ")
-    .replace(/^ /, "");
+// Size and grade are free text ("10.5", "12x6", "1/2\"", "M5 OUT", "SS-304"):
+// any character is allowed. Runs of spaces collapse to one and a leading space
+// is dropped; the trailing one has to survive while the next word is typed —
+// the payload trims it on save.
+const labelText = (v) => v.replace(/ {2,}/g, " ").replace(/^ /, "");
 // Bundles is a whole count.
 const digits = (v) => v.replace(/[^0-9]/g, "");
 
@@ -473,9 +469,8 @@ export default function RawMaterialDrawer({
                         </span>
                         <input
                           value={line.size}
-                          inputMode="decimal"
                           onChange={(e) =>
-                            updateLine(i, "size", decimalInput(e.target.value))
+                            updateLine(i, "size", labelText(e.target.value))
                           }
                           placeholder="10.5"
                           className={lineClass(i, "size")}
@@ -501,7 +496,7 @@ export default function RawMaterialDrawer({
                         <input
                           value={line.grade}
                           onChange={(e) =>
-                            updateLine(i, "grade", gradeText(e.target.value))
+                            updateLine(i, "grade", labelText(e.target.value))
                           }
                           placeholder="M5"
                           className={lineClass(i, "grade")}
