@@ -15,7 +15,7 @@ import {
   lineTotals,
   lineLabel,
 } from "../utils/purchase";
-import { joinWithAnd, sentenceCase } from "../utils/text";
+import { joinWithAnd, sentenceCase, decimalInput } from "../utils/text";
 import { useFocusTrap, useEnterAdvance } from "../utils/keyboard";
 
 function Field({ label, required, info, children }) {
@@ -507,12 +507,10 @@ export default function RawMaterialDrawer({
                           Quantity (kg) *
                         </span>
                         <input
-                          type="number"
                           inputMode="decimal"
-                          min="0"
                           value={line.quantity}
                           onChange={(e) =>
-                            updateLine(i, "quantity", e.target.value)
+                            updateLine(i, "quantity", decimalInput(e.target.value))
                           }
                           placeholder="250"
                           className={lineClass(i, "quantity")}

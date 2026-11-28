@@ -5,6 +5,7 @@ import {
   GetAllStateListByCountryId,
 } from "../services/apiServices";
 import { emptyAddress, PARTY_TYPES } from "../utils/party";
+import { decimalInput } from "../utils/text";
 import { useFocusTrap, useEnterAdvance } from "../utils/keyboard";
 
 const FIELD_CLASS =
@@ -520,11 +521,9 @@ export default function AddPartyDrawer({
               <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
                 <FloatingField label="Opening Balance">
                   <input
-                    type="number"
                     inputMode="decimal"
-                    min="0"
                     value={formState.openingBalance}
-                    onChange={(e) => set({ openingBalance: e.target.value })}
+                    onChange={(e) => set({ openingBalance: decimalInput(e.target.value) })}
                     className="w-full bg-transparent px-3 py-2.5 text-sm text-slate-700 outline-none"
                   />
                 </FloatingField>
@@ -614,11 +613,9 @@ export default function AddPartyDrawer({
                 </div>
                 {formState.creditLimitType === "custom" && (
                   <input
-                    type="number"
                     inputMode="decimal"
-                    min="0"
                     value={formState.creditLimit}
-                    onChange={(e) => set({ creditLimit: e.target.value })}
+                    onChange={(e) => set({ creditLimit: decimalInput(e.target.value) })}
                     placeholder="Enter credit limit"
                     className={`${FIELD_CLASS} mt-3 max-w-xs`}
                   />

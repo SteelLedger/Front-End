@@ -27,6 +27,11 @@ export default function SearchableSelect({
   // What the list holds, for the empty/hint copy ("supplier", "product", …).
   noun = "option",
   emptyText,
+  // When the box holds exactly one option's text (an existing pick), list
+  // everything instead of that one match, so opening it lets you change it.
+  showAllOnExact = false,
+  // Extra attributes for the input itself (e.g. data-* hooks).
+  inputProps,
 }) {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -38,10 +43,11 @@ export default function SearchableSelect({
   const ref = inputRef || localRef;
 
   const q = value.trim().toLowerCase();
-  const filtered = q
-    ? options.filter((o) => o.toLowerCase().includes(q))
-    : options;
   const hasExact = options.some((o) => o.toLowerCase() === q);
+  const filtered =
+    q && !(showAllOnExact && hasExact)
+      ? options.filter((o) => o.toLowerCase().includes(q))
+      : options;
 
   // Close the dropdown on any outside click.
   useEffect(() => {
@@ -112,6 +118,7 @@ export default function SearchableSelect({
   return (
     <div ref={containerRef} className="relative">
       <input
+        {...inputProps}
         ref={ref}
         type="text"
         role="combobox"

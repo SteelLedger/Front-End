@@ -45,9 +45,10 @@ function extractStatus(res) {
  *
  * It is checked here rather than only at login so that a tab left open, or a
  * URL typed straight at a page, gets the same answer. Maintenance switched on
- * mid-session is caught too: any API answering 503 (which is how every
- * endpoint refuses while it's on) brings the notice up at once — see
- * utils/maintenance.
+ * mid-session is caught too: when an API answers 503, the axios interceptor
+ * confirms with the status endpoint and, only if maintenance really is on,
+ * brings the notice up (see utils/maintenance). A bare 503 is never enough on
+ * its own, because API Gateway / Lambda send those for ordinary blips.
  *
  * Failure is deliberately OPEN: if the status call itself can't be reached,
  * the app renders as normal. Locking everyone out of a working system because
@@ -87,15 +88,11 @@ export default function MaintenanceProvider() {
         setUnavailable(false);
         if (!next.isEnabled) setTrip(false);
       })
-      .catch((err) => {
+      .catch(() => {
         if (!alive) return;
-        // This endpoint is meant to stay up through maintenance; if even it
-        // answers 503, the system is down.
-        if (err?.response?.status === 503) {
-          setTrip(true);
-          return;
-        }
-        // Can't tell — fail open, and remember that we couldn't.
+        // Can't tell, a 503 included: behind API Gateway + Lambda a 503 is
+        // usually a passing blip, not maintenance. Only `isEnabled: true`
+        // brings the notice up. Fail open, and remember that we couldn't tell.
         setStatus({ isEnabled: false, message: "", enabledAt: null });
         setUnavailable(true);
         setTrip(false);

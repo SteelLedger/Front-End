@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Trash2, Check, Plus, ChevronRight } from "lucide-react";
 import InfoTip from "./InfoTip";
+import SearchableSelect from "./SearchableSelect";
 import { joinWithAnd, sentenceCase, decimalInput } from "../utils/text";
 import { gmToKg } from "../utils/units";
 import { BYPRODUCT_OPTIONS } from "../utils/byproducts";
@@ -203,6 +204,51 @@ function AddRowButton({ onClick, className = "", children }) {
   );
 }
 
+/**
+ * Select Sheet, searchable. The list runs long (every size, point and grade),
+ * so typing "13x19" narrows it down. SearchableSelect works in names while the
+ * entry stores an id: picking a name sets the id, the box shows the picked
+ * sheet's name whenever you're not typing, and leaving it half-typed puts the
+ * current pick back rather than keeping text that doesn't match anything.
+ */
+function SheetPicker({ sheets, value, onChange, invalid }) {
+  // null = not typing, so show the selected sheet's name.
+  const [query, setQuery] = useState(null);
+  const selected = sheets.find((s) => s.id === value) || null;
+
+  const handleChange = (text) => {
+    const t = text.trim().toLowerCase();
+    const match = t && sheets.find((s) => s.name.toLowerCase() === t);
+    if (match) {
+      onChange(match.id);
+      setQuery(null);
+    } else {
+      setQuery(text);
+    }
+  };
+
+  return (
+    <div
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setQuery(null);
+      }}
+    >
+      <SearchableSelect
+        value={query ?? selected?.name ?? ""}
+        onChange={handleChange}
+        options={sheets.map((s) => s.name)}
+        placeholder="Search or select a sheet"
+        invalid={invalid}
+        allowCustom={false}
+        showAllOnExact
+        noun="sheet"
+        emptyText="No sheets in stock"
+        inputProps={{ "data-entry-first": true, "aria-label": "Select sheet" }}
+      />
+    </div>
+  );
+}
+
 function Field({ label, required, info, children }) {
   return (
     <label className="block">
@@ -331,25 +377,17 @@ function EntryCard({
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <Field label="Select Sheet" required>
-              <select
-                data-entry-first
+              {/* In-stock sheets only. The one already picked stays listed
+                  even when it has none, or an edit whose run used up its sheet
+                  would open with nothing selected. */}
+              <SheetPicker
+                sheets={
+                  sheet && !sheets.includes(sheet) ? [...sheets, sheet] : sheets
+                }
                 value={entry.rawMaterialId}
-                onChange={(ev) => onChange({ rawMaterialId: ev.target.value })}
-                className={`${FIELD} ${c.sheetMissing ? BAD_BORDER : OK_BORDER} ${entry.rawMaterialId ? "text-slate-700" : "text-slate-400"}`}
-              >
-                <option value="">-- Select Sheet --</option>
-                {/* In-stock sheets only. The one already picked stays listed
-                    even when it has none — an edit whose run used up its sheet
-                    would otherwise open with nothing selected. */}
-                {(sheet && !sheets.includes(sheet)
-                  ? [...sheets, sheet]
-                  : sheets
-                ).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(id) => onChange({ rawMaterialId: id })}
+                invalid={c.sheetMissing}
+              />
             </Field>
             {sheet && (
               <div className="mt-1.5 flex items-center gap-1 text-xs text-slate-500">
@@ -425,11 +463,9 @@ function EntryCard({
             </Field>
             <Field label="Products (In kg)">
               <input
-                type="number"
                 inputMode="decimal"
-                min="0"
                 value={entry.howMany}
-                onChange={(ev) => onChange({ howMany: ev.target.value })}
+                onChange={(ev) => onChange({ howMany: decimalInput(ev.target.value) })}
                 placeholder="kg"
                 className={`${FIELD} ${
                   c.qtyNotPositive || (c.productHalfDone && !c.qtyEntered)
@@ -459,11 +495,9 @@ function EntryCard({
               info="Scrap that is lost. It's deducted from the sheet and not added to any stock, unlike balance patta, which goes back into raw material."
             >
               <input
-                type="number"
                 inputMode="decimal"
-                min="0"
                 value={entry.wasteQty}
-                onChange={(ev) => onChange({ wasteQty: ev.target.value })}
+                onChange={(ev) => onChange({ wasteQty: decimalInput(ev.target.value) })}
                 placeholder="kg"
                 className={`${FIELD} ${OK_BORDER}`}
               />
@@ -545,13 +579,11 @@ function EntryCard({
                             }`}
                           />
                           <input
-                            type="number"
                             inputMode="decimal"
-                            min="0"
                             value={b.qty}
                             aria-label={`Balance patta ${i + 1} quantity in kg`}
                             onChange={(ev) =>
-                              updateBalance(i, { qty: ev.target.value })
+                              updateBalance(i, { qty: decimalInput(ev.target.value) })
                             }
                             placeholder="Qty (kg)"
                             className={`${FIELD} ${
@@ -655,13 +687,11 @@ function EntryCard({
                           <option value="Other">Other</option>
                         </select>
                         <input
-                          type="number"
                           inputMode="decimal"
-                          min="0"
                           value={b.qty}
                           aria-label={`Byproduct ${i + 1} quantity in kg`}
                           onChange={(ev) =>
-                            updateByproduct(i, { qty: ev.target.value })
+                            updateByproduct(i, { qty: decimalInput(ev.target.value) })
                           }
                           placeholder="Qty (kg)"
                           className={`${ROW_FIELD} min-w-0`}

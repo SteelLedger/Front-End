@@ -10,6 +10,7 @@ import {
 import SearchableSelect from "./SearchableSelect";
 import { gmToKgDisplay, kgToGm } from "../utils/units";
 import { useFocusTrap, useEnterAdvance } from "../utils/keyboard";
+import { decimalInput } from "../utils/text";
 import {
   PAYMENT_TYPES,
   emptyLine,
@@ -69,10 +70,8 @@ function AddedChip({ line, stockGm, onQty, onRemove }) {
       <input
         type="text"
         inputMode="decimal"
-        min="0"
-        step="any"
         value={line.qty}
-        onChange={(e) => onQty(e.target.value)}
+        onChange={(e) => onQty(decimalInput(e.target.value))}
         aria-label={`Quantity for ${line.name} in kg`}
         className="w-12 shrink-0 rounded-md border border-transparent bg-slate-100/80 px-1.5 py-0.5 text-right text-sm font-semibold text-slate-800 hover:border-slate-300 focus:border-[#1E4D96] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#1E4D96]/30"
       />
@@ -188,10 +187,8 @@ function LineSection({
               ref={qtyRef}
               type="text"
               inputMode="decimal"
-              min="0"
-              step="any"
               value={draft.qty}
-              onChange={(e) => onDraftChange({ ...draft, qty: e.target.value })}
+              onChange={(e) => onDraftChange({ ...draft, qty: decimalInput(e.target.value) })}
               onKeyDown={(e) => {
                 // Enter adds the line so a run of items can be keyed in fast.
                 if (e.key === "Enter") {
